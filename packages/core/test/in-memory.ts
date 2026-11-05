@@ -30,6 +30,7 @@ export type Recorded = {
     comments: Array<{ path: string; body: string }>;
   }>;
   checkRuns: Array<{ title: string; status?: string; conclusion?: string }>;
+  reactions: string[];
   telemetry: unknown[];
 };
 
@@ -94,6 +95,8 @@ export type ModelBehaviour = {
   /** Verdicts the verifier returns, keyed by candidate index. Absent means it keeps everything. */
   verifyVerdicts?: Record<number, "keep" | "drop">;
   failEveryCall?: Error;
+  /** Files the model never manages to review; the others succeed. */
+  failPaths?: string[];
 };
 
 export function createInMemoryRuntime(
@@ -115,6 +118,7 @@ export function createInMemoryRuntime(
     kv: new Map(),
     postedReviews: [],
     checkRuns: [],
+    reactions: [],
     telemetry: [],
   };
   const record = (name: string) => recorded.calls.push(name);

@@ -176,6 +176,28 @@ describe("runReview end to end on in-memory ports", () => {
     expect([...recorded.kv.keys()]).toEqual([`diff:${jobId}`]);
   });
 
+  it("gives a clean pass a thumbs-up", async () => {
+    const { runtime, recorded } = createInMemoryRuntime();
+
+    await drive(runtime, [...recorded.jobs.keys()][0]);
+
+    expect(recorded.reactions).toEqual(["+1"]);
+  });
+
+  it("does not call a partial review clean", async () => {
+    const { runtime, recorded } = createInMemoryRuntime({
+      model: { failPaths: ["src/log.ts"] },
+    });
+
+    await drive(runtime, [...recorded.jobs.keys()][0]);
+
+    expect(
+      [...recorded.fileReviews.values()].map((row) => row.file_status).sort(),
+    ).toEqual(["done", "failed"]);
+    expect(recorded.reactions).toEqual([]);
+    expect(recorded.checkRuns.at(-1)).toMatchObject({ conclusion: "failure" });
+  });
+
   it("records a terminal failure and closes the check run when the model fails unrecoverably", async () => {
     const { runtime, recorded } = createInMemoryRuntime({
       model: {

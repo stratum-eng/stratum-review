@@ -314,7 +314,7 @@ export async function runFinalizePhase(
   // outcome without opening the review. Best-effort: reacting is decoration, and losing it must never
   // fail a job that already posted its review. GitHub returns the existing reaction on a repeat, so a
   // retried finalize does not duplicate it.
-  if (finalComments.length === 0 && github.addIssueReaction) {
+  if (finalComments.length === 0 && !hasFailures && github.addIssueReaction) {
     try {
       await github.addIssueReaction(job.owner, job.repo, job.prNumber, "+1");
     } catch (error) {

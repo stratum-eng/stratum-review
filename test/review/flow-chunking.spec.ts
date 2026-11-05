@@ -278,7 +278,7 @@ dbDescribe("Review flow: chunking, partial reviews and re-posting", () => {
       expect(new Date(verifyStep.finishedAt).getTime()).toBeGreaterThanOrEqual(
         new Date(verifyStep.startedAt).getTime(),
       );
-      expect(finalJob?.summary_markdown).toMatch(/^### Stratum Review Review/);
+      expect(finalJob?.summary_markdown).toMatch(/^### Stratum Review/);
       expect(finalJob?.summary_model).toBeNull();
       expect(summarySpy).not.toHaveBeenCalled();
       summarySpy.mockRestore();

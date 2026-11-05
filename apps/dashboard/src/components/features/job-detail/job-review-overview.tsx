@@ -40,20 +40,11 @@ export const JobReviewOverview = memo(function JobReviewOverview({
       .replace(/^(✅ \*\*Approved\*\*|💬 \*\*Comments posted\*\*)\n\n/, "")
       .trim();
 
-    // Strip only the "### ... Stratum Review Review" heading, keep the intro sentence
-    const stripHeader = (md: string) =>
-      md
-        .replace(
-          /^###\s*(<picture>[\s\S]*?<\/picture>|💡)\s*Stratum Review Review\s*\n+/,
-          "",
-        )
-        .trim();
-
-    if (
-      content.startsWith("### 💡 Stratum Review Review") ||
-      content.includes("Stratum Review Review")
-    ) {
-      return stripHeader(content);
+    // Strip only the heading, keep the intro sentence. Older jobs say "Stratum Review Review".
+    const heading =
+      /^###\s*(?:<picture>[\s\S]*?<\/picture>|💡)?\s*Stratum Review(?: Review)?\s*\n+/;
+    if (heading.test(content)) {
+      return content.replace(heading, "").trim();
     }
 
     const shortSha = job.commitSha.slice(0, 10);

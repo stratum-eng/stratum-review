@@ -28,6 +28,24 @@ describe("formatReviewOverview", () => {
     expect(body).not.toContain("automated review suggestions");
   });
 
+  it("does not call a review clean when files could not be reviewed", () => {
+    const body = overview({ filesReviewed: 11, filesFailed: 10 });
+
+    expect(body).not.toContain("Nothing to flag");
+    expect(body).not.toContain("✅");
+    expect(body).toContain("Review incomplete");
+    expect(body).toContain("10 of 11 files could not be reviewed");
+    // The line count covers every file, including the ones nobody read.
+    expect(body).not.toContain("1898");
+  });
+
+  it("does not claim a clean remainder when no file was reviewed", () => {
+    const body = overview({ filesReviewed: 11, filesFailed: 11 });
+
+    expect(body).toContain("11 of 11 files could not be reviewed");
+    expect(body).not.toContain("no issues");
+  });
+
   it("keeps the original suggestions wording when findings were posted", () => {
     const body = overview({ postedFindings: 5 });
 
@@ -40,7 +58,7 @@ describe("formatReviewOverview", () => {
   it("keeps the header, commit and about-section in both cases", () => {
     for (const posted of [0, 3]) {
       const body = overview({ postedFindings: posted });
-      expect(body.startsWith("### Stratum Review Review")).toBe(true);
+      expect(body.startsWith("### Stratum Review")).toBe(true);
       // Ten characters, not the full 40 -- the PR body should stay readable.
       expect(body).toContain("`4fcf9d3760`");
       expect(body).toContain("About Stratum Review in GitHub");
@@ -93,14 +111,12 @@ describe("formatReviewOverview", () => {
   });
 
   it("gets singular and plural right", () => {
-    const one = overview({
-      filesReviewed: 1,
-      linesReviewed: 1,
-      filesFailed: 1,
-    });
+    const one = overview({ filesReviewed: 1, linesReviewed: 1 });
+    const failed = overview({ postedFindings: 1, filesFailed: 1 });
 
     expect(one).toContain("Reviewed 1 file (1 changed line)");
-    expect(one).toContain("1 file could not be reviewed");
+    expect(failed).toContain("1 file could not be reviewed");
+    expect(failed).not.toContain("1 files");
     expect(one).not.toContain("1 files");
     expect(one).not.toContain("1 changed lines");
   });

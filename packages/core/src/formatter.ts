@@ -106,13 +106,20 @@ export class FormatterService {
     // A clean review used to say "here are some automated review suggestions" and then list none,
     // which reads as a failure rather than a pass. Say what was checked and that nothing came of it.
     // With findings the original wording stays.
-    const headline =
-      postedFindings === 0
+    const incomplete = postedFindings === 0 && input.filesFailed > 0;
+    const unreviewed = `${input.filesFailed} of ${plural(filesReviewed, "file")} could not be reviewed`;
+    const cleanRemainder =
+      input.filesFailed < filesReviewed
+        ? " No issues were found in the rest, but this is not a clean review."
+        : "";
+    const headline = incomplete
+      ? `⚠️ **Review incomplete.** ${unreviewed}.${cleanRemainder}`
+      : postedFindings === 0
         ? `✅ **Nothing to flag.** Reviewed ${plural(filesReviewed, "file")} (${plural(linesReviewed, "changed line")}) and found no issues worth raising.`
         : "Here are some automated review suggestions for this pull request.";
 
     const notes: string[] = [];
-    if (input.filesFailed > 0) {
+    if (input.filesFailed > 0 && !incomplete) {
       notes.push(
         `${plural(input.filesFailed, "file")} could not be reviewed, so this pass is incomplete.`,
       );
@@ -135,6 +142,6 @@ export class FormatterService {
         ? "Every review posts a summary here. A clean pass also gets a 👍 on the pull request itself."
         : "If Stratum Review has suggestions, it will comment; otherwise it will react with 👍.";
 
-    return `### Stratum Review Review\n\n${headline}\n${noteBlock}\n**Reviewed commit:** \`${shortSha}\`\n\n<details>\n<summary>ℹ️ About Stratum Review in GitHub</summary>\n\n<br/>\n\n[Your team has set up Stratum Review to review pull requests in this repo](${this.baseUrl}/repos). Reviews are triggered when you:\n\n- **Open** a pull request for review\n- **Mark** a draft as ready\n\n${aboutOutcome}\n\n</details>`;
+    return `### Stratum Review\n\n${headline}\n${noteBlock}\n**Reviewed commit:** \`${shortSha}\`\n\n<details>\n<summary>ℹ️ About Stratum Review in GitHub</summary>\n\n<br/>\n\n[Your team has set up Stratum Review to review pull requests in this repo](${this.baseUrl}/repos). Reviews are triggered when you:\n\n- **Open** a pull request for review\n- **Mark** a draft as ready\n\n${aboutOutcome}\n\n</details>`;
   }
 }

@@ -86,6 +86,9 @@ export function createMockGitHub(params: {
         postedIndices: p.comments.map((_c, index) => index),
       };
     },
+    addIssueReaction: async (_o, _r, _pr, content) => {
+      recorded.reactions.push(content);
+    },
     findBotReviewForCommit: async () => null,
     ensureLabel: async () => undefined,
     addIssueLabels: async () => undefined,
@@ -101,6 +104,9 @@ export function createMockModel(params: {
   return {
     reviewFile: async (p) => {
       if (model.failEveryCall) throw model.failEveryCall;
+      if (model.failPaths?.includes(p.file.path)) {
+        throw new Error("provider returned 400: malformed request");
+      }
       record(`reviewFile:${p.file.path}`);
       const comments = findingsFor(model, p.file.path);
       return {
@@ -122,8 +128,9 @@ export function createMockModel(params: {
     reviewFiles: async (p) => {
       if (model.failEveryCall) throw model.failEveryCall;
       record(`reviewFiles:${p.files.length}`);
+      const failed = (path: string) => model.failPaths?.includes(path);
       const reviews = new Map(
-        p.files.map((file) => {
+        p.files.filter((file) => !failed(file.path)).map((file) => {
           const comments = findingsFor(model, file.path);
           return [
             file.path,
@@ -142,7 +149,10 @@ export function createMockModel(params: {
         modelUsed: "fake/model",
         provider: "fake",
         userPrompt: "prompt",
-        batch: { reviews, missing: [] },
+        batch: {
+          reviews,
+          missing: p.files.filter((file) => failed(file.path)),
+        },
       } as never;
     },
     submitReviewBatch: async () => null,
@@ -175,6 +185,6 @@ export function createMockFormatter(): ReviewFormatter {
     }),
     formatInlineComment: (comment) => `**${comment.title}**\n\n${comment.body}`,
     formatReviewOverview: ({ commitSha, postedFindings }) =>
-      `### Stratum Review Review\nReviewed ${commitSha.slice(0, 7)}: ${postedFindings} posted`,
+      `### Stratum Review\nReviewed ${commitSha.slice(0, 7)}: ${postedFindings} posted`,
   };
 }
