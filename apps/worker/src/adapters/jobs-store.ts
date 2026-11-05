@@ -5,9 +5,9 @@ import type { DbEnv } from "@codraoss/db/env";
 
 export function makeJobStore(env: AppBindings): JobStore {
   const dbEnv: DbEnv = {
-    HYPERDRIVE: env.HYPERDRIVE,
+    DB: env.DB,
+    BLOBS: env.BLOBS,
     APP_KV: env.APP_KV,
-    workerMode: true,
   };
   return makeDbJobStore(dbEnv);
 }

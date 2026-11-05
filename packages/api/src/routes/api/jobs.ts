@@ -109,6 +109,26 @@ export function createJobsRouter() {
     return response;
   });
 
+  app.get("/:id/ai-output/:key", async (c) => {
+    const denied = await requirePermission(c, "jobs.read", {
+      type: "job",
+      id: c.req.param("id"),
+    });
+    if (denied) return denied;
+    const output = await c.env.deps.repositories.fileReviews.getAiOutputForJob(
+      c.env as any,
+      c.req.param("id"),
+      c.req.param("key"),
+    );
+    if (output === null) {
+      return jsonError("Model output not found.", 404);
+    }
+    return c.text(output, 200, {
+      // Named by its own hash, so it can never change.
+      "Cache-Control": "private, max-age=31536000, immutable",
+    });
+  });
+
   // diff_input isn't persisted; rebuilt from the job's own base/head commits (not the live PR), via KV cache.
   app.get("/:id/diffs", async (c) => {
     const denied = await requirePermission(c, "jobs.read", {

@@ -113,13 +113,6 @@ function _unusedEnv(key: string): string {
   );
 }
 
-export function getTestDatabaseUrl() {
-  return requiredEnv("TEST_DATABASE_URL");
-}
-
-export function hasConfiguredTestDatabaseUrl() {
-  return Boolean(usableEnvValue(process.env.TEST_DATABASE_URL));
-}
 
 import { FakeIdentityProvider } from "../packages/core/test/fakes/identity-provider";
 
@@ -143,9 +136,9 @@ export function createTestEnv(
     REVIEW_QUEUE: new MockQueue() as any,
     REVIEW_WORKFLOW: new MockWorkflow() as any,
     ASSETS: new MockAssets() as any,
-    HYPERDRIVE: {
-      connectionString: getTestDatabaseUrl(),
-    },
+    // Created per test file by test/setup.ts.
+    DB: (globalThis as any).__TEST_D1,
+    BLOBS: (globalThis as any).__TEST_BLOBS,
     APP_PRIVATE_KEY: "private_key",
     GITHUB_APP_ID: "app_id",
     GITHUB_APP_SLUG: requiredEnv("GITHUB_APP_SLUG"),
@@ -208,7 +201,7 @@ export async function saveTestProviderApiKey(
     env,
     `
     UPDATE llm_providers
-    SET encrypted_api_key = $1, enabled = TRUE, updated_at = now()
+    SET encrypted_api_key = $1, enabled = TRUE, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
     WHERE name = $2
     `,
     [encrypted, providerName],
@@ -220,14 +213,14 @@ export async function saveTestProviderApiKey(
         env,
         `
         INSERT INTO model_configs (model_id, provider, provider_id, model_name, updated_at)
-        SELECT $1, 'gemini', p.id, $1, now()
+        SELECT $1, 'gemini', p.id, $1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
         FROM llm_providers p
         WHERE p.name = 'Google'
         ON CONFLICT (model_id) DO UPDATE SET
           provider = EXCLUDED.provider,
           provider_id = EXCLUDED.provider_id,
           model_name = EXCLUDED.model_name,
-          updated_at = now()
+          updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
         `,
         [modelId],
       );
@@ -274,9 +267,7 @@ export function createMockPRWebhook(overrides: any = {}) {
 
 export const sha = (seed: string) => seed.repeat(40).slice(0, 40);
 
-export const dbDescribe = hasConfiguredTestDatabaseUrl()
-  ? describe
-  : describe.skip;
+export const dbDescribe = describe;
 
 let nameSeq = 0;
 export function uniqueName(prefix: string) {

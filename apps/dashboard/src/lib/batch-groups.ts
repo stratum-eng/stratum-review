@@ -1,7 +1,7 @@
 import type { FileReviewRecord } from "@codraoss/schema";
 
 // Bin membership is never persisted (pack.ts derives it rather than storing it). But every file in
-// a bin is written with the SAME shared response, so grouping on `rawAiOutput` reconstructs the bins
+// a bin is written with the SAME shared response, so grouping on `rawAiOutputKey` reconstructs the bins
 // exactly. Two different bins producing byte-identical JSON is not a real possibility: the payload
 // names each file it covers.
 export type BatchGroup = { index: number; paths: string[] };
@@ -13,11 +13,12 @@ export function groupBatches(
 
   for (const file of files) {
     // 1 means reviewed alone, null predates batching, and a failed row has no response to group on.
-    if ((file.batchSize ?? 1) <= 1 || !file.rawAiOutput) continue;
-    const existing = byResponse.get(file.rawAiOutput);
+    const response = file.rawAiOutputKey ?? file.rawAiOutput;
+    if ((file.batchSize ?? 1) <= 1 || !response) continue;
+    const existing = byResponse.get(response);
     if (existing) existing.paths.push(file.filePath);
     else
-      byResponse.set(file.rawAiOutput, {
+      byResponse.set(response, {
         index: byResponse.size + 1,
         paths: [file.filePath],
       });

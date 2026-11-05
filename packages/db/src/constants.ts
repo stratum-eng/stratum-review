@@ -32,30 +32,5 @@ export const MODEL_SELECT = `
   JOIN llm_providers p ON mc.provider_id = p.id
 `;
 
-// repo-configs.ts
-export const REPO_CONFIG_SELECT = `
-  SELECT
-    r.installation_id,
-    r.owner,
-    r.repo,
-    rc.parsed_json,
-    rc.updated_at,
-    rc.main_model,
-    rc.fallback_models,
-    rc.size_overrides,
-    rc.enabled,
-    lj.created_at AS last_job_created_at,
-    lj.verdict AS last_job_verdict
-  FROM repo_configs rc
-  JOIN repositories r ON rc.repository_id = r.id
-  LEFT JOIN LATERAL (
-    SELECT created_at, verdict
-    FROM jobs
-    WHERE repository_id = r.id
-    ORDER BY created_at DESC
-    LIMIT 1
-  ) lj ON true
-`;
-
 // instance-id-repository.ts
 export const INSTANCE_ID_KEY = "codra:instance_id";

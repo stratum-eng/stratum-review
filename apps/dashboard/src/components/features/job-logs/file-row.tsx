@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { Badge, CopyButton } from "@codraoss/ui";
+import { api } from "@client/lib/api";
 import { preventToggleOnTextSelection } from "@codraoss/ui/selection";
 import { formatPreciseDuration } from "@codraoss/ui/utils";
 import type { FileReviewRecord } from "@codraoss/schema";
@@ -79,6 +81,34 @@ export const DEGRADED_LABEL: Record<string, string> = {
   truncated: "The model ran out of output room; some findings may be missing.",
 };
 
+// The response lives in R2, so it is fetched only when a row is actually opened.
+function useRawOutput(file: FileReviewRecord, open: boolean) {
+  const key = file.rawAiOutputKey ?? null;
+  const [output, setOutput] = useState<string | null>(file.rawAiOutput);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (!open || !key || output !== null) return;
+    let cancelled = false;
+    api
+      .getJobAiOutput(file.jobId, key)
+      .then((text) => {
+        if (!cancelled) setOutput(text);
+      })
+      .catch((error: unknown) => {
+        console.warn("Failed to load model output", error);
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, key, file.jobId, output]);
+
+  if (output !== null) return { output, placeholder: "" };
+  if (failed) return { output: null, placeholder: "Output no longer available" };
+  return { output: null, placeholder: key ? "Loading…" : "No output saved" };
+}
+
 export function FileRow({
   file,
   diffsLoading,
@@ -88,6 +118,11 @@ export function FileRow({
   diffsLoading: boolean;
   batch?: BatchGroup;
 }) {
+  const [open, setOpen] = useState(false);
+  const { output: rawOutput, placeholder: rawPlaceholder } = useRawOutput(
+    file,
+    open,
+  );
   const meta = STATUS_META[file.fileStatus] ?? STATUS_META.pending;
   const { Icon } = meta;
   const duration = formatPreciseDuration(file.durationMs);
@@ -106,7 +141,10 @@ export function FileRow({
   const kept = file.parsedComments.length;
 
   return (
-    <details className="group min-w-0">
+    <details
+      className="group min-w-0"
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
       {/* Selection allowed here (was `select-none`) so log content can be copied; the click guard stops drag-select from collapsing the row. */}
       <summary
         onClick={preventToggleOnTextSelection}
@@ -301,10 +339,10 @@ export function FileRow({
                 Raw model output
                 {batchSize ? ` · shared by ${batchSize} files` : ""}
               </p>
-              {file.rawAiOutput && <CopyButton value={file.rawAiOutput} />}
+              {rawOutput && <CopyButton value={rawOutput} />}
             </div>
             <pre className="code-block thin-scroll max-h-[480px] flex-1 overflow-auto text-[10px] leading-relaxed sm:text-[11px]">
-              {file.rawAiOutput ?? "No output saved"}
+              {rawOutput ?? rawPlaceholder}
             </pre>
           </div>
         </div>

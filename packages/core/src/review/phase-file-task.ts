@@ -179,6 +179,7 @@ export async function executeFileReviewTask(params: {
     diffLineCount: inherited.diff_line_count,
     diffInput: inherited.diff_input,
     rawAiOutput: inherited.raw_ai_output,
+    rawAiOutputKey: inherited.raw_ai_output_key,
     parsedComments: inherited.parsed_comments as ParsedReviewComment[],
     inputTokens: inherited.input_tokens,
     outputTokens: inherited.output_tokens,

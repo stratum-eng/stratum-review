@@ -154,11 +154,11 @@ dbDescribe("cross-run finding suppression", () => {
       const job = await seedJob(repo, sha("8"));
       const [{ repository_id: repositoryId }] = await queryRows<{
         repository_id: number;
-      }>(env, "SELECT repository_id FROM jobs WHERE id = $1::uuid", [job]);
+      }>(env, "SELECT repository_id FROM jobs WHERE id = $1", [job]);
       await queryRows(
         env,
         `INSERT INTO comment_feedback (repository_id, pr_number, fingerprint, anchor_hash, github_comment_id, outcome)
-         VALUES ($1::int, 1, 'fp-rejected', NULL, 12345, 'deleted')`,
+         VALUES ($1, 1, 'fp-rejected', NULL, 12345, 'deleted')`,
         [repositoryId],
       );
 
@@ -179,11 +179,11 @@ dbDescribe("cross-run finding suppression", () => {
       const job = await seedJob(repo, sha("9"));
       const [{ repository_id: repositoryId }] = await queryRows<{
         repository_id: number;
-      }>(env, "SELECT repository_id FROM jobs WHERE id = $1::uuid", [job]);
+      }>(env, "SELECT repository_id FROM jobs WHERE id = $1", [job]);
       await queryRows(
         env,
         `INSERT INTO comment_feedback (repository_id, pr_number, fingerprint, anchor_hash, github_comment_id, outcome)
-         VALUES ($1::int, 1, 'fp-resolved', NULL, 54321, 'resolved')`,
+         VALUES ($1, 1, 'fp-resolved', NULL, 54321, 'resolved')`,
         [repositoryId],
       );
 
@@ -201,7 +201,7 @@ dbDescribe("cross-run finding suppression", () => {
       const job = await seedJob(uniqueName(`label-${suffix}`), sha("d"));
       const [{ repository_id: repositoryId }] = await queryRows<{
         repository_id: number;
-      }>(env, "SELECT repository_id FROM jobs WHERE id = $1::uuid", [job]);
+      }>(env, "SELECT repository_id FROM jobs WHERE id = $1", [job]);
       return { job, repositoryId };
     }
 

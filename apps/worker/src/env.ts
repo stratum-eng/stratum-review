@@ -35,7 +35,8 @@ export interface AppBindings {
   REVIEW_QUEUE: QueueProducer<ReviewJobMessage>;
   REVIEW_WORKFLOW: Workflow;
   ASSETS: AssetsBinding;
-  HYPERDRIVE: HyperdriveBinding;
+  DB: D1Database;
+  BLOBS: R2Bucket;
   APP_PRIVATE_KEY: string;
   GITHUB_APP_ID: string;
   GITHUB_APP_SLUG?: string;

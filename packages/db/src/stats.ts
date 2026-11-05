@@ -9,6 +9,7 @@ import {
   reviewCategories,
 } from "@codraoss/schema";
 import { getModelUsageStats } from "./file-reviews";
+import { daysAgo } from "./sql";
 
 // Guard the zone before it reaches SQL, so an unknown name can't error the query.
 const jobStatusSet = new Set<string>(jobStatuses);
@@ -28,16 +29,148 @@ export function trendBucketDays(days: number) {
   return 14;
 }
 
-// `created_at` is `timestamptz` (absolute); `AT TIME ZONE <zone>` converts it to wall-clock time before truncating, so a job at 03:00 IST lands on the IST day, not the UTC one.
+// Every current UTC offset is a multiple of 15 minutes, so these buckets never straddle a local midnight
+// and any zone's days can be rebuilt from them. That caps a year at about 35,000 rows however many jobs ran.
+const BUCKET_15M = `substr(created_at, 1, 14) || printf('%02d', CAST(substr(created_at, 15, 2) AS INTEGER) / 15 * 15)`;
+
+const STATS_CACHE_TTL_SECONDS = 300;
+
+function zonedDayFormatter(zone: string) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: zone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+function addDays(day: string, days: number) {
+  const date = new Date(`${day}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+type TrendBucketRow = {
+  bucket: string;
+  jobs: number;
+  input_tokens: number;
+  output_tokens: number;
+  comments: number;
+};
+
+// Days are generated first, so quiet stretches come back as explicit zeros instead of gaps -- the chart
+// then shows a continuous, evenly spaced series for every range. Zones are applied here because SQLite has none.
+function buildTrend(
+  rows: TrendBucketRow[],
+  days: number,
+  bucketDays: number,
+  zone: string,
+) {
+  const formatter = zonedDayFormatter(zone);
+  const now = Date.now();
+  const startDay = formatter.format(now - days * 86_400_000);
+  const endDay = formatter.format(now);
+  const buckets: Array<
+    Omit<TrendBucketRow, "bucket"> & { day: string; end_day: string }
+  > = [];
+  for (let day = startDay; day <= endDay; day = addDays(day, bucketDays)) {
+    const last = addDays(day, bucketDays - 1);
+    buckets.push({
+      day,
+      end_day: last < endDay ? last : endDay,
+      jobs: 0,
+      input_tokens: 0,
+      output_tokens: 0,
+      comments: 0,
+    });
+  }
+  const startMs = new Date(`${startDay}T00:00:00Z`).getTime();
+  for (const row of rows) {
+    const day = formatter.format(new Date(`${row.bucket}:00Z`));
+    const offsetDays = Math.round(
+      (new Date(`${day}T00:00:00Z`).getTime() - startMs) / 86_400_000,
+    );
+    const bucket = buckets[Math.floor(offsetDays / bucketDays)];
+    if (!bucket) continue;
+    bucket.jobs += row.jobs;
+    bucket.input_tokens += row.input_tokens;
+    bucket.output_tokens += row.output_tokens;
+    bucket.comments += row.comments;
+  }
+  return buckets;
+}
+
+const DURATION_MS = `(julianday(finished_at) - julianday(started_at)) * 86400000`;
+
+// Exact p95 by linear interpolation, matching the PERCENTILE_CONT this replaces, without loading every duration.
+async function getPerformance(env: DbEnv, days: number) {
+  const window = `finished_at IS NOT NULL AND started_at IS NOT NULL AND created_at >= ${daysAgo("$1")}`;
+  const [summary] = await queryRows<{
+    finished: number;
+    avg_duration_ms: number | null;
+    avg_confidence: number | null;
+  }>(
+    env,
+    `
+      SELECT COUNT(*) AS finished,
+             AVG(${DURATION_MS}) AS avg_duration_ms,
+             AVG(overall_confidence_score) AS avg_confidence
+      FROM jobs
+      WHERE ${window}
+    `,
+    [days],
+  );
+  if (!summary?.finished) {
+    return {
+      avg_duration_ms: null,
+      p95_duration_ms: null,
+      avg_confidence: null,
+    };
+  }
+  const position = (summary.finished - 1) * 0.95;
+  const lower = Math.floor(position);
+  const neighbours = await queryRows<{ duration_ms: number }>(
+    env,
+    `
+      SELECT ${DURATION_MS} AS duration_ms
+      FROM jobs
+      WHERE ${window}
+      ORDER BY duration_ms ASC
+      LIMIT 2 OFFSET $2
+    `,
+    [days, lower],
+  );
+  const low = neighbours[0]?.duration_ms ?? null;
+  const high = neighbours[1]?.duration_ms ?? low;
+  return {
+    avg_duration_ms: summary.avg_duration_ms,
+    p95_duration_ms:
+      low === null || high === null
+        ? null
+        : low + (high - low) * (position - lower),
+    avg_confidence: summary.avg_confidence,
+  };
+}
+
 export async function getStats(env: DbEnv, days = 30, timeZone = "UTC") {
   const parsedDays = Number(days);
   const safeDays = Number.isFinite(parsedDays) ? Math.trunc(parsedDays) : 30;
   const clampedDays = Math.min(Math.max(safeDays, 1), 365);
   const zone = isSupportedTimeZone(timeZone) ? timeZone : "UTC";
   const bucketDays = trendBucketDays(clampedDays);
+  const cacheKey = `stats:v1:${clampedDays}:${zone}`;
+  try {
+    const cached = await env.APP_KV.get(cacheKey);
+    if (cached) return statsSchema.parse(JSON.parse(cached));
+  } catch (error) {
+    console.warn("Ignoring unreadable stats cache entry", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   const [
-    [totals],
-    dailyRows,
+    trendBuckets,
+    performanceRow,
     verdictRows,
     topRepos,
     modelRows,
@@ -45,70 +178,26 @@ export async function getStats(env: DbEnv, days = 30, timeZone = "UTC") {
     triggerRows,
     severityRows,
     categoryRows,
-    [performanceRow],
   ] = await Promise.all([
-    queryRows<{
-      jobs: number;
-      input_tokens: number;
-      output_tokens: number;
-      comments: number;
-    }>(
+    queryRows<TrendBucketRow>(
       env,
       `
-        SELECT
-          COUNT(*)::int AS jobs,
-          COALESCE(SUM(total_input_tokens), 0)::int AS input_tokens,
-          COALESCE(SUM(total_output_tokens), 0)::int AS output_tokens,
-          COALESCE(SUM(comment_count), 0)::int AS comments
+        SELECT ${BUCKET_15M} AS bucket,
+               COUNT(*) AS jobs,
+               COALESCE(SUM(total_input_tokens), 0) AS input_tokens,
+               COALESCE(SUM(total_output_tokens), 0) AS output_tokens,
+               COALESCE(SUM(comment_count), 0) AS comments
         FROM jobs
-        WHERE created_at >= now() - ($1::int * interval '1 day')
+        WHERE created_at >= ${daysAgo("$1")}
+        GROUP BY bucket
       `,
       [clampedDays],
     ),
-    // Buckets are generated first and LEFT JOINed, so quiet stretches come back as explicit zeros
-    // instead of gaps -- the chart then shows a continuous, evenly spaced series for every range.
-    queryRows<{
-      day: string;
-      end_day: string;
-      jobs: number;
-      input_tokens: number;
-      output_tokens: number;
-      comments: number;
-    }>(
-      env,
-      `
-        WITH bounds AS (
-          SELECT
-            ((now() - ($1::int * interval '1 day')) AT TIME ZONE $2)::date AS start_day,
-            (now() AT TIME ZONE $2)::date AS end_day
-        ),
-        buckets AS (
-          SELECT
-            g::date AS bucket_start,
-            LEAST((g + (($3::int - 1) * interval '1 day'))::date, b.end_day) AS bucket_end
-          FROM bounds b,
-               generate_series(b.start_day::timestamp, b.end_day::timestamp, ($3::int * interval '1 day')) AS g
-        )
-        SELECT
-          TO_CHAR(bk.bucket_start, 'YYYY-MM-DD') AS day,
-          TO_CHAR(bk.bucket_end, 'YYYY-MM-DD') AS end_day,
-          COUNT(j.id)::int AS jobs,
-          COALESCE(SUM(j.total_input_tokens), 0)::int AS input_tokens,
-          COALESCE(SUM(j.total_output_tokens), 0)::int AS output_tokens,
-          COALESCE(SUM(j.comment_count), 0)::int AS comments
-        FROM buckets bk
-        LEFT JOIN jobs j
-          ON j.created_at >= now() - ($1::int * interval '1 day')
-         AND (j.created_at AT TIME ZONE $2)::date BETWEEN bk.bucket_start AND bk.bucket_end
-        GROUP BY bk.bucket_start, bk.bucket_end
-        ORDER BY bk.bucket_start ASC
-      `,
-      [clampedDays, zone, bucketDays],
-    ),
+    getPerformance(env, clampedDays),
     queryRows<{ verdict: "approve" | "comment" | null; count: number }>(
       env,
       `
-        SELECT verdict, COUNT(*)::int AS count
+        SELECT verdict, COUNT(*) AS count
         FROM jobs
         GROUP BY verdict
         ORDER BY count DESC
@@ -117,10 +206,10 @@ export async function getStats(env: DbEnv, days = 30, timeZone = "UTC") {
     queryRows<{ owner: string; repo: string; jobs: number }>(
       env,
       `
-        SELECT r.owner, r.repo, COUNT(*)::int AS jobs
+        SELECT r.owner, r.repo, COUNT(*) AS jobs
         FROM jobs j
         JOIN repositories r ON j.repository_id = r.id
-        WHERE j.created_at >= now() - ($1::int * interval '1 day')
+        WHERE j.created_at >= ${daysAgo("$1")}
         GROUP BY r.owner, r.repo
         ORDER BY jobs DESC, r.owner ASC, r.repo ASC
         LIMIT 10
@@ -131,9 +220,9 @@ export async function getStats(env: DbEnv, days = 30, timeZone = "UTC") {
     queryRows<{ status: string; count: number }>(
       env,
       `
-        SELECT status, COUNT(*)::int AS count
+        SELECT status, COUNT(*) AS count
         FROM jobs
-        WHERE created_at >= now() - ($1::int * interval '1 day')
+        WHERE created_at >= ${daysAgo("$1")}
         GROUP BY status
         ORDER BY count DESC
       `,
@@ -142,9 +231,9 @@ export async function getStats(env: DbEnv, days = 30, timeZone = "UTC") {
     queryRows<{ trigger: string; count: number }>(
       env,
       `
-        SELECT trigger, COUNT(*)::int AS count
+        SELECT trigger, COUNT(*) AS count
         FROM jobs
-        WHERE created_at >= now() - ($1::int * interval '1 day')
+        WHERE created_at >= ${daysAgo("$1")}
         GROUP BY trigger
         ORDER BY count DESC
       `,
@@ -153,10 +242,10 @@ export async function getStats(env: DbEnv, days = 30, timeZone = "UTC") {
     queryRows<{ severity: string; count: number }>(
       env,
       `
-        SELECT rc.severity, COUNT(*)::int AS count
+        SELECT rc.severity, COUNT(*) AS count
         FROM review_comments rc
         JOIN file_reviews fr ON fr.id = rc.file_review_id
-        WHERE fr.created_at >= now() - ($1::int * interval '1 day')
+        WHERE fr.created_at >= ${daysAgo("$1")}
         GROUP BY rc.severity
         ORDER BY count DESC
       `,
@@ -165,39 +254,27 @@ export async function getStats(env: DbEnv, days = 30, timeZone = "UTC") {
     queryRows<{ category: string; count: number }>(
       env,
       `
-        SELECT rc.category, COUNT(*)::int AS count
+        SELECT rc.category, COUNT(*) AS count
         FROM review_comments rc
         JOIN file_reviews fr ON fr.id = rc.file_review_id
-        WHERE fr.created_at >= now() - ($1::int * interval '1 day')
+        WHERE fr.created_at >= ${daysAgo("$1")}
         GROUP BY rc.category
         ORDER BY count DESC
       `,
       [clampedDays],
     ),
-    queryRows<{
-      avg_duration_ms: number | null;
-      p95_duration_ms: number | null;
-      avg_confidence: number | null;
-    }>(
-      env,
-      `
-        SELECT
-          AVG(EXTRACT(EPOCH FROM (finished_at - started_at)) * 1000) AS avg_duration_ms,
-          PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (finished_at - started_at)) * 1000) AS p95_duration_ms,
-          AVG(overall_confidence_score) AS avg_confidence
-        FROM jobs
-        WHERE finished_at IS NOT NULL AND started_at IS NOT NULL AND created_at >= now() - ($1::int * interval '1 day')
-      `,
-      [clampedDays],
-    ),
   ]);
 
-  return statsSchema.parse({
+  const dailyRows = buildTrend(trendBuckets, clampedDays, bucketDays, zone);
+  const sum = (field: "jobs" | "input_tokens" | "output_tokens" | "comments") =>
+    trendBuckets.reduce((total, row) => total + row[field], 0);
+
+  const stats = statsSchema.parse({
     totals: {
-      jobs: totals?.jobs ?? 0,
-      inputTokens: totals?.input_tokens ?? 0,
-      outputTokens: totals?.output_tokens ?? 0,
-      comments: totals?.comments ?? 0,
+      jobs: sum("jobs"),
+      inputTokens: sum("input_tokens"),
+      outputTokens: sum("output_tokens"),
+      comments: sum("comments"),
     },
     trend: dailyRows.map((row) => ({
       day: row.day,
@@ -267,14 +344,25 @@ export async function getStats(env: DbEnv, days = 30, timeZone = "UTC") {
     ),
     performance: {
       avgDurationMs:
-        performanceRow?.avg_duration_ms != null
+        performanceRow.avg_duration_ms != null
           ? Math.round(performanceRow.avg_duration_ms)
           : null,
       p95DurationMs:
-        performanceRow?.p95_duration_ms != null
+        performanceRow.p95_duration_ms != null
           ? Math.round(performanceRow.p95_duration_ms)
           : null,
-      avgConfidence: performanceRow?.avg_confidence ?? null,
+      avgConfidence: performanceRow.avg_confidence,
     },
   });
+
+  try {
+    await env.APP_KV.put(cacheKey, JSON.stringify(stats), {
+      expirationTtl: STATS_CACHE_TTL_SECONDS,
+    });
+  } catch (error) {
+    console.warn("Failed to cache stats", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  return stats;
 }

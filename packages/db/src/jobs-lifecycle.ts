@@ -2,6 +2,7 @@ import type { DbEnv } from "./env";
 import { queryRows } from "./client";
 import type { JobRow } from "./jobs-mapping";
 import { markSystemActive } from "./jobs-activity";
+import { NOW, mapSteps, stepField } from "./sql";
 
 export async function updateJobCheckRun(
   env: DbEnv,
@@ -41,7 +42,7 @@ export async function completeJob(
     `
       UPDATE jobs
       SET status = 'done',
-          finished_at = now(),
+          finished_at = ${NOW},
           -- check_run_completed_at is intentionally NOT set here -- only once markJobCheckRunCompleted confirms GitHub's check run actually updated; otherwise completeTerminalCheckRuns reconciles it later.
           lease_owner = NULL,
           lease_expires_at = NULL,
@@ -56,22 +57,20 @@ export async function completeJob(
           overall_confidence_score = $10,
           error_msg = $11,
           steps = CASE
-            WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(steps, '[]'::jsonb)) s WHERE s->>'name' = 'Completing')
-            THEN (
-              SELECT jsonb_agg(
-                CASE
-                  WHEN s->>'name' = 'Completing'
-                  THEN s || jsonb_build_object('status', 'done', 'finishedAt', $12::text, 'error', NULL)
-                  ELSE s
-                END
-              ) FROM jsonb_array_elements(COALESCE(steps, '[]'::jsonb)) s
-            )
-            ELSE COALESCE(steps, '[]'::jsonb) || jsonb_build_array(
-              jsonb_build_object(
+            WHEN EXISTS (SELECT 1 FROM json_each(COALESCE(steps, '[]')) s WHERE ${stepField("name")} = 'Completing')
+            THEN ${mapSteps(
+              "COALESCE(steps, '[]')",
+              `${stepField("name")} = 'Completing'`,
+              `'$.status', 'done', '$.finishedAt', $12, '$.error', NULL`,
+            )}
+            ELSE json_insert(
+              COALESCE(steps, '[]'),
+              '$[#]',
+              json_object(
                 'name', 'Completing',
                 'status', 'done',
-                'startedAt', $12::text,
-                'finishedAt', $12::text,
+                'startedAt', $12,
+                'finishedAt', $12,
                 'error', NULL
               )
             )
@@ -96,7 +95,7 @@ export async function completeJob(
 }
 
 export async function failJob(
-  env: Pick<DbEnv, "HYPERDRIVE" | "APP_KV">,
+  env: DbEnv,
   jobId: string,
   errorMessage: string,
 ) {
@@ -105,20 +104,16 @@ export async function failJob(
     `
       UPDATE jobs
       SET status = 'failed',
-          finished_at = now(),
+          finished_at = ${NOW},
           lease_owner = NULL,
           lease_expires_at = NULL,
           error_msg = $2,
           steps = CASE
-            WHEN steps IS NOT NULL THEN (
-              SELECT jsonb_agg(
-                CASE
-                  WHEN s->>'status' = 'running'
-                  THEN s || jsonb_build_object('status', 'failed', 'finishedAt', now(), 'error', $2::text)
-                  ELSE s
-                END
-              ) FROM jsonb_array_elements(steps) s
-            )
+            WHEN steps IS NOT NULL THEN ${mapSteps(
+              "steps",
+              `${stepField("status")} = 'running'`,
+              `'$.status', 'failed', '$.finishedAt', ${NOW}, '$.error', $2`,
+            )}
             ELSE steps
           END
       WHERE id = $1
@@ -130,7 +125,7 @@ export async function failJob(
 
 // Clears lease. Returns false if terminal (caller must terminate Workflow).
 export async function cancelJob(
-  env: Pick<DbEnv, "HYPERDRIVE" | "APP_KV">,
+  env: DbEnv,
   jobId: string,
 ): Promise<boolean> {
   const rows = await queryRows<{ id: string }>(
@@ -138,20 +133,16 @@ export async function cancelJob(
     `
       UPDATE jobs
       SET status = 'cancelled',
-          finished_at = now(),
+          finished_at = ${NOW},
           lease_owner = NULL,
           lease_expires_at = NULL,
           error_msg = COALESCE(error_msg, 'Stopped by user.'),
           steps = CASE
-            WHEN steps IS NOT NULL THEN (
-              SELECT jsonb_agg(
-                CASE
-                  WHEN s->>'status' = 'running'
-                  THEN s || jsonb_build_object('status', 'failed', 'finishedAt', now(), 'error', 'Stopped by user.')
-                  ELSE s
-                END
-              ) FROM jsonb_array_elements(steps) s
-            )
+            WHEN steps IS NOT NULL THEN ${mapSteps(
+              "steps",
+              `${stepField("status")} = 'running'`,
+              `'$.status', 'failed', '$.finishedAt', ${NOW}, '$.error', 'Stopped by user.'`,
+            )}
             ELSE steps
           END
       WHERE id = $1 AND status IN ('queued', 'running')
@@ -179,7 +170,7 @@ export async function markJobCheckRunCompleted(env: DbEnv, jobId: string) {
     env,
     `
       UPDATE jobs
-      SET check_run_completed_at = now()
+      SET check_run_completed_at = ${NOW}
       WHERE id = $1
     `,
     [jobId],
@@ -213,15 +204,11 @@ export async function completePreparationStep(
     `
       UPDATE jobs
       SET file_count = $2,
-          steps = (
-            SELECT jsonb_agg(
-              CASE
-                WHEN s->>'name' = 'Preparation'
-                THEN s || jsonb_build_object('status', 'done', 'finishedAt', $3::text)
-                ELSE s
-              END
-            ) FROM jsonb_array_elements(steps) s
-          )
+          steps = ${mapSteps(
+            "steps",
+            `${stepField("name")} = 'Preparation'`,
+            `'$.status', 'done', '$.finishedAt', $3`,
+          )}
       WHERE id = $1
     `,
     [jobId, fileCount, now],
@@ -252,32 +239,28 @@ export async function updateJobStep(
     env,
     `
       UPDATE jobs
-      SET heartbeat_at = now(),
+      SET heartbeat_at = ${NOW},
           steps = CASE
-        WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(steps, '[]'::jsonb)) s WHERE s->>'name' = $2)
-        THEN (
-          SELECT jsonb_agg(
-            CASE
-              WHEN s->>'name' = $2
-              THEN s || jsonb_build_object(
-                'status', $3::text,
-                -- Preserve the FIRST start time: a phase re-enters 'running' once per hibernated chunk, so seed it only when absent to keep the true multi-minute wall-clock.
-                'startedAt', COALESCE(s->>'startedAt', $4::text),
-                -- 'running' clears any stale finish; otherwise keep the FIRST finish so re-marking 'done' doesn't inflate the displayed duration.
-                'finishedAt', CASE WHEN $3::text = 'running' THEN NULL ELSE COALESCE(s->>'finishedAt', $5::text) END,
-                'error', COALESCE($6::text, s->>'error')
-              )
-              ELSE s
-            END
-          ) FROM jsonb_array_elements(COALESCE(steps, '[]'::jsonb)) s
-        )
-        ELSE COALESCE(steps, '[]'::jsonb) || jsonb_build_array(
-          jsonb_build_object(
-            'name', $2::text,
-            'status', $3::text,
-            'startedAt', $4::text,
-            'finishedAt', $5::text,
-            'error', $6::text
+        WHEN EXISTS (SELECT 1 FROM json_each(COALESCE(steps, '[]')) s WHERE ${stepField("name")} = $2)
+        THEN ${mapSteps(
+          "COALESCE(steps, '[]')",
+          `${stepField("name")} = $2`,
+          // Preserve the FIRST start time: a phase re-enters 'running' once per hibernated chunk, so seed it only when absent to keep the true multi-minute wall-clock.
+          // 'running' clears any stale finish; otherwise keep the FIRST finish so re-marking 'done' doesn't inflate the displayed duration.
+          `'$.status', $3,
+           '$.startedAt', COALESCE(${stepField("startedAt")}, $4),
+           '$.finishedAt', CASE WHEN $3 = 'running' THEN NULL ELSE COALESCE(${stepField("finishedAt")}, $5) END,
+           '$.error', COALESCE($6, ${stepField("error")})`,
+        )}
+        ELSE json_insert(
+          COALESCE(steps, '[]'),
+          '$[#]',
+          json_object(
+            'name', $2,
+            'status', $3,
+            'startedAt', $4,
+            'finishedAt', $5,
+            'error', $6
           )
         )
       END
@@ -320,21 +303,20 @@ export async function supersedeOlderJobs(
   const rows = await queryRows<{ id: string }>(
     env,
     `
-      UPDATE jobs j
+      UPDATE jobs
       SET status = 'superseded',
-          finished_at = now(),
+          finished_at = ${NOW},
           lease_owner = NULL,
           lease_expires_at = NULL,
           error_msg = 'Superseded by a newer commit or job.'
-      FROM repositories r
-      WHERE j.repository_id = r.id
-        AND r.installation_id = $1
-        AND r.owner = $2
-        AND r.repo = $3
-        AND j.pr_number = $4
-        AND j.id != $5
-        AND j.status IN ('queued', 'running')
-      RETURNING j.id
+      WHERE repository_id IN (
+          SELECT r.id FROM repositories r
+          WHERE r.installation_id = $1 AND r.owner = $2 AND r.repo = $3
+        )
+        AND pr_number = $4
+        AND id != $5
+        AND status IN ('queued', 'running')
+      RETURNING id
     `,
     [
       input.installationId,

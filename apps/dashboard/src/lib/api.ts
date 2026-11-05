@@ -215,6 +215,16 @@ export const api = {
     }
     return requestWithMeta<JobDetailResponse>(`/api/jobs/${id}`, { headers });
   },
+  async getJobAiOutput(id: string, key: string) {
+    const response = await fetch(
+      `/api/jobs/${id}/ai-output/${encodeURIComponent(key)}`,
+      { credentials: "same-origin" },
+    );
+    if (!response.ok) {
+      throw new Error(`Model output request failed: ${response.status}`);
+    }
+    return await response.text();
+  },
   getJobDiffs(id: string) {
     return request<JobDiffsResponse>(`/api/jobs/${id}/diffs`);
   },

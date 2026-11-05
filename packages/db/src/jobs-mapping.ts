@@ -9,6 +9,13 @@ import {
 // Import from db/jobs.ts, not from here: eight specs vi.mock the '@server/db/jobs' specifier, and a direct sibling import silently bypasses them.
 // Deliberately imports NONE of the other jobs-* siblings, so it stays the leaf they can all depend on.
 
+// Puts the repository fields on a written job row in the same statement, standing in for Postgres's
+// data-modifying CTEs, which SQLite does not have.
+export const JOB_RETURNING = `RETURNING *,
+        (SELECT r.owner FROM repositories r WHERE r.id = repository_id) AS owner,
+        (SELECT r.repo FROM repositories r WHERE r.id = repository_id) AS repo,
+        (SELECT r.installation_id FROM repositories r WHERE r.id = repository_id) AS installation_id`;
+
 export type JobRow = {
   id: string;
   workflow_instance_id: string | null;
@@ -18,8 +25,8 @@ export type JobRow = {
   pr_number: number;
   pr_title: string | null;
   pr_author: string | null;
-  commit_sha: ByteaValue;
-  base_sha: ByteaValue;
+  commit_sha: string;
+  base_sha: string;
   trigger: "auto" | "mention" | "retry";
   status:
     | "queued"
@@ -68,22 +75,8 @@ type JobStep = {
   error?: string | null;
 };
 
-type ByteaValue = ArrayBuffer | ArrayBufferView | string;
-
-export function bytesToHex(value: ByteaValue) {
-  if (typeof value === "string") {
-    return value.startsWith("\\x")
-      ? value.slice(2).toLowerCase()
-      : value.toLowerCase();
-  }
-
-  const bytes = ArrayBuffer.isView(value)
-    ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
-    : new Uint8Array(value);
-
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
-    "",
-  );
+export function bytesToHex(value: string) {
+  return value.toLowerCase();
 }
 
 function latestTimestamp(...values: Array<string | null | undefined>) {

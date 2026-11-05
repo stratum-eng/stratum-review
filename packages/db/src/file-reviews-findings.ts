@@ -1,6 +1,7 @@
 import type { DbEnv } from "./env";
 import type { SuppressedFinding } from "@codraoss/core/ports";
 import { queryRows } from "./client";
+import { inJson, rowField } from "./sql";
 
 export type { SuppressedFinding } from "@codraoss/core/ports";
 
@@ -10,11 +11,13 @@ export async function getSuppressedFindings(
   env: DbEnv,
   jobId: string,
 ): Promise<SuppressedFinding[]> {
-  return queryRows<SuppressedFinding>(
+  const rows = await queryRows<
+    Omit<SuppressedFinding, "anchored"> & { anchored: number }
+  >(
     env,
     `
       WITH me AS (
-        SELECT repository_id, pr_number, commit_sha FROM jobs WHERE id = $1::uuid
+        SELECT repository_id, pr_number, commit_sha FROM jobs WHERE id = $1
       ),
       already_posted AS (
         SELECT DISTINCT rc.fingerprint, rc.anchor_hash, rc.fingerprint_v2
@@ -22,7 +25,7 @@ export async function getSuppressedFindings(
         JOIN jobs            j  ON j.repository_id = me.repository_id AND j.pr_number = me.pr_number
         JOIN file_reviews    fr ON fr.job_id = j.id
         JOIN review_comments rc ON rc.file_review_id = fr.id
-        WHERE j.id <> $1::uuid
+        WHERE j.id <> $1
           AND j.commit_sha <> me.commit_sha
           AND rc.posted
           -- Either identity is enough: v1 alone misses reworded repeats.
@@ -30,7 +33,7 @@ export async function getSuppressedFindings(
       ),
       rejected AS (
         -- Only NEGATIVE outcomes: suppressing on 'resolved'/'marked_right' would silence findings that turned out correct, and "no row" is not a negative signal.
-        SELECT DISTINCT cf.fingerprint, NULL::text AS anchor_hash, cf.fingerprint_v2
+        SELECT DISTINCT cf.fingerprint, NULL AS anchor_hash, cf.fingerprint_v2
         FROM me
         JOIN comment_feedback cf ON cf.repository_id = me.repository_id
         WHERE cf.outcome IN ('deleted', 'marked_wrong')
@@ -42,6 +45,8 @@ export async function getSuppressedFindings(
     `,
     [jobId],
   );
+  // SQLite has no boolean type.
+  return rows.map((row) => ({ ...row, anchored: Boolean(row.anchored) }));
 }
 
 // Job scoping is the authorization boundary, not a convenience: a label writes a REPOSITORY-WIDE suppression.
@@ -67,7 +72,7 @@ export async function getFindingLabelTarget(
       FROM jobs j
       JOIN file_reviews    fr ON fr.job_id = j.id
       JOIN review_comments rc ON rc.file_review_id = fr.id
-      WHERE j.id = $1::uuid AND rc.fingerprint = $2::text
+      WHERE j.id = $1 AND rc.fingerprint = $2
       LIMIT 1
     `,
     [jobId, fingerprint],
@@ -85,12 +90,12 @@ export async function markCommentsPosted(
   await queryRows(
     env,
     `
-      UPDATE review_comments rc
+      UPDATE review_comments AS rc
       SET posted = TRUE, disposition = 'posted'
       FROM file_reviews fr
       WHERE fr.id = rc.file_review_id
-        AND fr.job_id = $1::uuid
-        AND rc.fingerprint = ANY($2::text[])
+        AND fr.job_id = $1
+        AND rc.fingerprint ${inJson("$2")}
     `,
     [jobId, fingerprints],
   );
@@ -106,26 +111,31 @@ export async function markCommentDispositions(
   >,
 ): Promise<void> {
   if (byFingerprint.size === 0) return;
-  const fingerprints = [...byFingerprint.keys()];
-  const dispositions = fingerprints.map(
-    (fp) => byFingerprint.get(fp)!.disposition,
-  );
-  const reasons = fingerprints.map((fp) => byFingerprint.get(fp)!.reason);
+  const rows = [...byFingerprint].map(([fingerprint, value]) => ({
+    fingerprint,
+    disposition: value.disposition,
+    reason: value.reason,
+  }));
 
   // A posted finding's disposition is never rewritten: fingerprint collisions on same-titled findings once overwrote a real P0's 'posted' with 'suppression'. `posted` is GitHub's fact; disposition is our inference, so the fact wins.
   await queryRows(
     env,
     `
-      UPDATE review_comments rc
+      UPDATE review_comments AS rc
       SET disposition   = CASE WHEN rc.posted THEN rc.disposition
                                ELSE COALESCE(d.disposition, rc.disposition) END,
           verify_reason = COALESCE(d.reason, rc.verify_reason)
       FROM file_reviews fr,
-           UNNEST($2::text[], $3::text[], $4::text[]) AS d(fingerprint, disposition, reason)
+           (
+             SELECT ${rowField("fingerprint")} AS fingerprint,
+                    ${rowField("disposition")} AS disposition,
+                    ${rowField("reason")} AS reason
+             FROM json_each($2) u
+           ) d
       WHERE fr.id = rc.file_review_id
-        AND fr.job_id = $1::uuid
+        AND fr.job_id = $1
         AND rc.fingerprint = d.fingerprint
     `,
-    [jobId, fingerprints, dispositions, reasons],
+    [jobId, rows],
   );
 }

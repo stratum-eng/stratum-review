@@ -106,7 +106,7 @@ dbDescribe("Async batch review flow", () => {
   async function simulateScheduledDelayElapsed(jobId: string) {
     await queryRows(
       env,
-      `UPDATE jobs SET last_queue_message_at = now() - interval '1 second' WHERE id = $1`,
+      `UPDATE jobs SET last_queue_message_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 seconds') WHERE id = $1`,
       [jobId],
     );
   }

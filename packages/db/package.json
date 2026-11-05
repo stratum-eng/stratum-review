@@ -1,7 +1,7 @@
 {
   "name": "@codraoss/db",
   "version": "0.10.0",
-  "description": "Codra's Postgres persistence layer behind repository interfaces.",
+  "description": "Codra's D1 persistence layer behind repository interfaces.",
   "author": "Devarshi Shimpi",
   "license": "AGPL-3.0-only",
   "homepage": "https://codra.run",
@@ -68,8 +68,7 @@
   },
   "dependencies": {
     "@codraoss/schema": "^0.10.0",
-    "@codraoss/core": "^0.10.0",
-    "postgres": "^3.4.9"
+    "@codraoss/core": "^0.10.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.3",

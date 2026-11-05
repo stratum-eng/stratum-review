@@ -140,7 +140,7 @@ describe("Dashboard API: repositories and repo config", () => {
 
     const loaded = await loadRepoConfig(
       env.APP_KV,
-      { workerMode: true, HYPERDRIVE: env.HYPERDRIVE, APP_KV: env.APP_KV },
+      { DB: env.DB, BLOBS: env.BLOBS, APP_KV: env.APP_KV },
       {
         installationId: "123",
         owner: "api-test-owner",
@@ -164,7 +164,7 @@ describe("Dashboard API: repositories and repo config", () => {
 
     const reloaded = await loadRepoConfig(
       env.APP_KV,
-      { workerMode: true, HYPERDRIVE: env.HYPERDRIVE, APP_KV: env.APP_KV },
+      { DB: env.DB, BLOBS: env.BLOBS, APP_KV: env.APP_KV },
       {
         installationId: "123",
         owner: "api-test-owner",

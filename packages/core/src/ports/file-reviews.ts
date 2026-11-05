@@ -9,6 +9,7 @@ export type FileReviewRow = {
   diff_line_count: number;
   diff_input: string | null;
   raw_ai_output: string | null;
+  raw_ai_output_key?: string | null;
   parsed_comments: ParsedReviewComment[];
   input_tokens: number | null;
   output_tokens: number | null;
@@ -77,6 +78,7 @@ export interface FileReviewStore {
       diffLineCount: number;
       diffInput: string | null;
       rawAiOutput: string | null;
+      rawAiOutputKey?: string | null;
       parsedComments: ParsedReviewComment[];
       inputTokens: number | null;
       outputTokens: number | null;

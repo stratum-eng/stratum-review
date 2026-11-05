@@ -1,6 +1,7 @@
 import type { DbEnv } from "./env";
 
 import { queryRows } from "./client";
+import { NOW, inJson, rowField } from "./sql";
 
 // 'deleted' and 'marked_wrong' are the negative signals; 'resolved' and 'marked_right' are MEASUREMENT only, since suppressing on them would train the system to stop reporting findings that worked.
 // The ABSENCE of a row is not a signal either way, so precision is only ever `marked_right / (marked_right + marked_wrong)`, reported with n.
@@ -34,18 +35,23 @@ export async function recordCommentFeedback(
     env,
     `
       INSERT INTO comment_feedback (repository_id, pr_number, fingerprint, anchor_hash, github_comment_id, outcome, fingerprint_v2)
-      SELECT * FROM UNNEST($1::int[], $2::int[], $3::text[], $4::text[], $5::bigint[], $6::text[], $7::text[])
+      SELECT ${rowField("repository_id")}, ${rowField("pr_number")}, ${rowField("fingerprint")}, ${rowField("anchor_hash")},
+             ${rowField("github_comment_id")}, ${rowField("outcome")}, ${rowField("fingerprint_v2")}
+      FROM json_each($1) u
+      WHERE true
       ON CONFLICT (repository_id, github_comment_id, outcome) DO NOTHING
       RETURNING id
     `,
     [
-      entries.map((e) => e.repositoryId),
-      entries.map((e) => e.prNumber ?? null),
-      entries.map((e) => e.fingerprint),
-      entries.map((e) => e.anchorHash ?? null),
-      entries.map((e) => e.githubCommentId),
-      entries.map((e) => e.outcome),
-      entries.map((e) => e.fingerprintV2 ?? null),
+      entries.map((e) => ({
+        repository_id: e.repositoryId,
+        pr_number: e.prNumber ?? null,
+        fingerprint: e.fingerprint,
+        anchor_hash: e.anchorHash ?? null,
+        github_comment_id: e.githubCommentId,
+        outcome: e.outcome,
+        fingerprint_v2: e.fingerprintV2 ?? null,
+      })),
     ],
   );
 
@@ -71,7 +77,7 @@ export async function upsertDashboardFeedback(
     `
       INSERT INTO comment_feedback
         (repository_id, pr_number, fingerprint, anchor_hash, github_comment_id, outcome, source, job_id, labelled_by, fingerprint_v2)
-      VALUES ($1::int, $2::int, $3::text, $4::text, NULL, $5::text, 'dashboard', $6::uuid, $7::bigint, $8::text)
+      VALUES ($1, $2, $3, $4, NULL, $5, 'dashboard', $6, $7, $8)
       ON CONFLICT (repository_id, fingerprint) WHERE source = 'dashboard'
       DO UPDATE SET
         outcome     = EXCLUDED.outcome,
@@ -80,7 +86,7 @@ export async function upsertDashboardFeedback(
         fingerprint_v2 = COALESCE(EXCLUDED.fingerprint_v2, comment_feedback.fingerprint_v2),
         job_id      = EXCLUDED.job_id,
         labelled_by = EXCLUDED.labelled_by,
-        updated_at  = now()
+        updated_at  = ${NOW}
     `,
     [
       input.repositoryId,
@@ -104,7 +110,7 @@ export async function clearDashboardFeedback(
   await queryRows(
     env,
     `DELETE FROM comment_feedback
-     WHERE repository_id = $1::int AND fingerprint = $2::text AND source = 'dashboard'`,
+     WHERE repository_id = $1 AND fingerprint = $2 AND source = 'dashboard'`,
     [repositoryId, fingerprint],
   );
 }
@@ -120,9 +126,9 @@ export async function clearResolvedFeedback(
     env,
     `
       DELETE FROM comment_feedback
-      WHERE repository_id = $1::int
+      WHERE repository_id = $1
         AND outcome = 'resolved'
-        AND github_comment_id = ANY($2::bigint[])
+        AND github_comment_id ${inJson("$2")}
     `,
     [repositoryId, githubCommentIds],
   );

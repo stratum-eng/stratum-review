@@ -6,9 +6,8 @@ import { upsertFileReview } from "@codraoss/db/file-reviews";
 import { syncRepoConfig, upsertRepoConfig } from "@codraoss/db/repo-configs";
 import { createTestEnv } from "./helpers";
 
-// JSON.stringify bound to $n::jsonb stores a jsonb string scalar; SQL JSON operators then read
-// nothing, though parseJsonColumn tolerates both shapes (bug reached 1,215 rows). Fix: $n::text::jsonb.
-// Do not bind raw values; normalizeParam turns arrays into Postgres array literals.
+// Double-encoding a JSON column stores a string scalar; SQL JSON functions then read nothing, though
+// parseJsonColumn tolerates both shapes (upstream hit this on Postgres across 1,215 rows).
 describe("jsonb columns are stored as jsonb, not as string scalars", () => {
   const env = createTestEnv();
   const unique = () =>
@@ -22,7 +21,7 @@ describe("jsonb columns are stored as jsonb, not as string scalars", () => {
   ) {
     const [row] = await queryRows<{ shape: string | null }>(
       env,
-      `SELECT jsonb_typeof(${column}) AS shape FROM ${table} WHERE ${where}`,
+      `SELECT json_type(${column}) AS shape FROM ${table} WHERE ${where}`,
       params,
     );
     return row?.shape ?? null;
@@ -79,12 +78,12 @@ describe("jsonb columns are stored as jsonb, not as string scalars", () => {
       ]),
     ).toBe("array");
 
-    const [row] = await queryRows<{ matched: boolean }>(
+    const [row] = await queryRows<{ matched: number }>(
       env,
-      `SELECT fallback_models @> jsonb_build_array($3::text) AS matched FROM repo_configs WHERE ${where}`,
+      `SELECT EXISTS (SELECT 1 FROM json_each(fallback_models) WHERE value = $3) AS matched FROM repo_configs WHERE ${where}`,
       ["jsonb-owner", repo, "model-b"],
     );
-    expect(row?.matched).toBe(true);
+    expect(row?.matched).toBe(1);
   });
 
   it("stores repo_configs.parsed_json as an object on the sync path too", async () => {
@@ -122,7 +121,7 @@ describe("jsonb columns are stored as jsonb, not as string scalars", () => {
     });
 
     expect(
-      await shapeOf("jobs", "config_snapshot", "id = $1::uuid", [job.id]),
+      await shapeOf("jobs", "config_snapshot", "id = $1", [job.id]),
     ).toBe("object");
   });
 
@@ -160,12 +159,12 @@ describe("jsonb columns are stored as jsonb, not as string scalars", () => {
     });
 
     // This exact read reported zero despite five withheld findings.
-    const [row] = await queryRows<{ evidence: string | null }>(
+    const [row] = await queryRows<{ evidence: number | null }>(
       env,
-      `SELECT withheld_counts->>'evidence' AS evidence FROM file_reviews WHERE job_id = $1::uuid`,
+      `SELECT withheld_counts->>'evidence' AS evidence FROM file_reviews WHERE job_id = $1`,
       [job.id],
     );
-    expect(row?.evidence).toBe("5");
+    expect(row?.evidence).toBe(5);
   });
 
   // Sweep: catches new write sites the per-helper tests above don't cover.
@@ -182,8 +181,8 @@ describe("jsonb columns are stored as jsonb, not as string scalars", () => {
     for (const [table, column] of columns) {
       const [row] = await queryRows<{ n: number }>(
         env,
-        `SELECT count(*)::int AS n FROM ${table}
-         WHERE ${column} IS NOT NULL AND jsonb_typeof(${column}) = 'string'`,
+        `SELECT count(*) AS n FROM ${table}
+         WHERE ${column} IS NOT NULL AND json_type(${column}) = 'string'`,
       );
       if ((row?.n ?? 0) > 0)
         offenders.push(`${table}.${column} (${row.n} rows)`);

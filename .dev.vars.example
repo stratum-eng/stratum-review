@@ -2,9 +2,6 @@
 # Copy this file to .dev.vars for local development.
 # Keep real secrets only in .dev.vars or your deployment secret store.
 
-# --- Integration tests ---
-TEST_DATABASE_URL="postgresql://user:password@localhost:5432/codra"
-
 # --- LLM provider config encryption ---
 LLM_CONFIG_ENCRYPTION_KEY="REPLACE_WITH_A_LONG_RANDOM_ENCRYPTION_KEY"
 
@@ -31,7 +28,3 @@ ENVIRONMENT="development"
 # TELEMETRY_DISABLED="true"
 # TELEMETRY_API_URL="https://codra.run/api/telemetry"
 # TELEMETRY_SECRET="REPLACE_TO_OVERRIDE_DEFAULT_TELEMETRY_SECRET"
-
-# --- Database connections ---
-DATABASE_URL="postgresql://user:password@localhost:5432/codra_dev"
-CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="postgresql://user:password@localhost:5432/codra_dev"

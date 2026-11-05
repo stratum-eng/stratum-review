@@ -1,5 +1,4 @@
 import type { DbEnv } from "./env";
-import { hexToBytes } from "@codraoss/schema/hex";
 import { parseJsonColumn, queryRows } from "./client";
 import {
   defaultRepoConfig,
@@ -8,8 +7,8 @@ import {
   type RepoConfig,
 } from "@codraoss/schema";
 import { getOrCreateRepository } from "./repositories";
-import { reviewCommentJsonObject } from "./review-comment-sql";
-import { type JobRow, bytesToHex, mapJob } from "./jobs-mapping";
+import { reviewCommentsAggregate } from "./review-comment-sql";
+import { JOB_RETURNING, type JobRow, bytesToHex, mapJob } from "./jobs-mapping";
 import { markSystemActive } from "./jobs-activity";
 
 type JobDetailRow = JobRow & {
@@ -25,7 +24,7 @@ export async function setJobWorkflowInstance(
     env,
     `
       UPDATE jobs
-      SET workflow_instance_id = $2::uuid
+      SET workflow_instance_id = $2
       WHERE id = $1
     `,
     [jobId, workflowInstanceId],
@@ -52,7 +51,7 @@ export async function setJobPullRequestMeta(
 
 // False allows cron to clear SYSTEM_ACTIVE_JOBS_KEY.
 export async function hasPendingMaintenanceWork(env: DbEnv): Promise<boolean> {
-  const rows = await queryRows<{ has_work: boolean }>(
+  const rows = await queryRows<{ has_work: number }>(
     env,
     `
       SELECT EXISTS (
@@ -62,11 +61,11 @@ export async function hasPendingMaintenanceWork(env: DbEnv): Promise<boolean> {
       ) AS has_work
     `,
   );
-  return rows[0]?.has_work === true;
+  return Boolean(rows[0]?.has_work);
 }
 
 export async function insertJob(
-  env: Pick<DbEnv, "HYPERDRIVE" | "APP_KV">,
+  env: DbEnv,
   input: {
     installationId: string;
     owner: string;
@@ -92,35 +91,30 @@ export async function insertJob(
   const [row] = await queryRows<JobRow>(
     env,
     `
-      WITH inserted AS (
-        INSERT INTO jobs (
-          repository_id,
-          pr_number,
-          pr_title,
-          pr_author,
-          commit_sha,
-          base_sha,
-          trigger,
-          status,
-          config_snapshot,
-          head_ref,
-          base_ref,
-          retry_of_job_id
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, 'queued', $8::text::jsonb, $9, $10, $11::uuid)
-        RETURNING *
+      INSERT INTO jobs (
+        repository_id,
+        pr_number,
+        pr_title,
+        pr_author,
+        commit_sha,
+        base_sha,
+        trigger,
+        status,
+        config_snapshot,
+        head_ref,
+        base_ref,
+        retry_of_job_id
       )
-      SELECT i.*, r.owner, r.repo, r.installation_id
-      FROM inserted i
-      JOIN repositories r ON i.repository_id = r.id
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'queued', $8, $9, $10, $11)
+      ${JOB_RETURNING}
     `,
     [
       repositoryId,
       input.prNumber,
       input.prTitle,
       input.prAuthor,
-      hexToBytes(input.commitSha),
-      hexToBytes(input.baseSha),
+      input.commitSha.toLowerCase(),
+      input.baseSha.toLowerCase(),
       input.trigger,
       JSON.stringify(input.configSnapshot ?? defaultRepoConfig),
       input.headRef,
@@ -172,7 +166,7 @@ export async function listJobs(
   if (query.search) {
     params.push(`%${query.search}%`);
     conditions.push(
-      `(j.pr_title ILIKE $${params.length} OR CAST(j.pr_number AS TEXT) LIKE $${params.length})`,
+      `(j.pr_title LIKE $${params.length} OR CAST(j.pr_number AS TEXT) LIKE $${params.length})`,
     );
   }
 
@@ -197,7 +191,7 @@ export async function listJobs(
       `,
       params,
     ),
-    queryRows<{ count: string }>(
+    queryRows<{ count: number }>(
       env,
       `
         SELECT COUNT(*) as count
@@ -211,7 +205,7 @@ export async function listJobs(
 
   return {
     jobs: rows.map(mapJob),
-    total: parseInt(totalResult.count, 10),
+    total: totalResult.count,
   };
 }
 
@@ -245,59 +239,49 @@ export async function getJobDetail(env: DbEnv, jobId: string) {
         r.owner,
         r.repo,
         r.installation_id,
-        COALESCE(
-          (
-            SELECT JSON_AGG(
-              JSON_BUILD_OBJECT(
-                'id', fr.id,
-                'jobId', fr.job_id,
-                'filePath', fr.file_path,
-                'fileStatus', fr.file_status,
-                'modelUsed', fr.model_used,
-                'diffLineCount', fr.diff_line_count,
-                'diffInput', fr.diff_input,
-                'rawAiOutput', fr.raw_ai_output,
-                'inputTokens', fr.input_tokens,
-                'outputTokens', fr.output_tokens,
-                'durationMs', fr.duration_ms,
-                'verdict', fr.verdict,
-                'fileSummary', fr.file_summary,
-                'errorMessage', fr.error_msg,
-                'createdAt', fr.created_at,
-                'modelProvider', fr.model_provider,
-                'overallCorrectness', fr.overall_correctness,
-                'confidenceScore', fr.confidence_score,
-                -- NULL on rows written before batching existed; the logs view renders >1 as shared.
-                'batchSize', fr.batch_size,
-                -- What the gates dropped. Without it the logs cannot tell "found nothing" apart
-                -- from "found things and withheld every one of them".
-                'withheldCounts', fr.withheld_counts,
-                'degraded', fr.degraded,
-                'parsedComments', COALESCE(
-                  (
-                    SELECT JSON_AGG(
-                      ${reviewCommentJsonObject(
-                        // Correlated rather than joined so this stays one round trip; served by the comment_feedback (repository_id, fingerprint) index.
-                        `'humanLabel', (
-                          SELECT cf.outcome FROM comment_feedback cf
-                          WHERE cf.repository_id = j.repository_id
-                            AND cf.fingerprint = rc.fingerprint
-                            AND cf.source = 'dashboard'
-                          LIMIT 1
-                        )`,
-                      )}
-                      ORDER BY rc.id ASC
-                    ) FROM review_comments rc WHERE rc.file_review_id = fr.id
-                  ),
-                  '[]'::json
-                )
-              )
-              ORDER BY fr.created_at ASC
-            )
+        (
+          SELECT json_group_array(json(file)) FROM (
+            SELECT json_object(
+              'id', fr.id,
+              'jobId', fr.job_id,
+              'filePath', fr.file_path,
+              'fileStatus', fr.file_status,
+              'modelUsed', fr.model_used,
+              'diffLineCount', fr.diff_line_count,
+              'diffInput', fr.diff_input,
+              'rawAiOutput', NULL,
+              'rawAiOutputKey', fr.raw_ai_output_key,
+              'inputTokens', fr.input_tokens,
+              'outputTokens', fr.output_tokens,
+              'durationMs', fr.duration_ms,
+              'verdict', fr.verdict,
+              'fileSummary', fr.file_summary,
+              'errorMessage', fr.error_msg,
+              'createdAt', fr.created_at,
+              'modelProvider', fr.model_provider,
+              'overallCorrectness', fr.overall_correctness,
+              'confidenceScore', fr.confidence_score,
+              -- NULL on rows written before batching existed; the logs view renders >1 as shared.
+              'batchSize', fr.batch_size,
+              -- What the gates dropped. Without it the logs cannot tell "found nothing" apart
+              -- from "found things and withheld every one of them".
+              'withheldCounts', json(fr.withheld_counts),
+              'degraded', fr.degraded,
+              'parsedComments', json(${reviewCommentsAggregate(
+                // Correlated rather than joined so this stays one round trip; served by the comment_feedback (repository_id, fingerprint) index.
+                `'humanLabel', (
+                  SELECT cf.outcome FROM comment_feedback cf
+                  WHERE cf.repository_id = j.repository_id
+                    AND cf.fingerprint = rc.fingerprint
+                    AND cf.source = 'dashboard'
+                  LIMIT 1
+                )`,
+              )})
+            ) AS file
             FROM file_reviews fr
             WHERE fr.job_id = j.id
-          ),
-          '[]'::json
+            ORDER BY fr.created_at ASC
+          )
         ) AS files_json
       FROM jobs j
       JOIN repositories r ON j.repository_id = r.id
@@ -352,7 +336,7 @@ export async function findExistingJobForHead(
       input.owner,
       input.repo,
       input.prNumber,
-      hexToBytes(input.commitSha),
+      input.commitSha.toLowerCase(),
       input.trigger,
     ],
   );

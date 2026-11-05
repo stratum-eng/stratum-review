@@ -21,23 +21,7 @@ jobs:
   verify:
     name: Verify Stability
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: codra_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
-      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/codra_test
-      TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/codra_test
       GITHUB_APP_SLUG: codra-test-app
       GITHUB_APP_WEBHOOK_SECRET: fake-webhook-secret
       GITHUB_CLIENT_ID: fake-dashboard-client-id

@@ -12,7 +12,7 @@ import {
   recordRetryableFileReviewFailure,
   upsertFileReview,
 } from "@codraoss/db/file-reviews";
-import { getDb } from "@codraoss/db/client";
+import { queryRows } from "@codraoss/db/client";
 import { createTestEnv, dbDescribe, sha, uniqueName } from "../helpers";
 
 dbDescribe("resumable queue primitives", () => {
@@ -79,8 +79,9 @@ dbDescribe("resumable queue primitives", () => {
     });
 
     await claimJobLease(env, job.id, "lease-a", 600);
-    await getDb(env).query(
-      `UPDATE jobs SET lease_expires_at = now() - interval '1 minute' WHERE id = $1`,
+    await queryRows(
+      env,
+      `UPDATE jobs SET lease_expires_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 minutes') WHERE id = $1`,
       [job.id],
     );
 
@@ -107,8 +108,9 @@ dbDescribe("resumable queue primitives", () => {
     });
 
     await claimJobLease(env, job.id, "lease-a", 600);
-    await getDb(env).query(
-      `UPDATE jobs SET lease_expires_at = now() - interval '1 minute', recovery_count = 3 WHERE id = $1`,
+    await queryRows(
+      env,
+      `UPDATE jobs SET lease_expires_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 minutes'), recovery_count = 3 WHERE id = $1`,
       [job.id],
     );
 
@@ -137,13 +139,14 @@ dbDescribe("resumable queue primitives", () => {
     });
 
     await claimJobLease(env, job.id, "lease-a", 600);
-    await getDb(env).query(
+    await queryRows(
+      env,
       `
         UPDATE jobs
         SET lease_owner = NULL,
             lease_expires_at = NULL,
-            heartbeat_at = now() - interval '5 minutes',
-            last_queue_message_at = now() - interval '5 minutes'
+            heartbeat_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-5 minutes'),
+            last_queue_message_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-5 minutes')
         WHERE id = $1
       `,
       [job.id],
@@ -175,11 +178,12 @@ dbDescribe("resumable queue primitives", () => {
     });
 
     await claimJobLease(env, job.id, "lease-a", 600);
-    await getDb(env).query(
+    await queryRows(
+      env,
       `
         UPDATE jobs
-        SET heartbeat_at = now() - interval '10 minutes',
-            last_queue_message_at = now() - interval '10 minutes'
+        SET heartbeat_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-10 minutes'),
+            last_queue_message_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-10 minutes')
         WHERE id = $1
       `,
       [job.id],

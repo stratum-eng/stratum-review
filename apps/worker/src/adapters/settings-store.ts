@@ -17,9 +17,9 @@ import { loadRepoConfig } from "../core/config";
 
 function toDbEnv(env: AppBindings): DbEnv {
   return {
-    HYPERDRIVE: env.HYPERDRIVE,
+    DB: env.DB,
+    BLOBS: env.BLOBS,
     APP_KV: env.APP_KV,
-    workerMode: true,
   };
 }
 

@@ -27,10 +27,6 @@ function parseEnvValue(value) {
   return trimmed.replace(/\\n/g, "\n");
 }
 
-function usableEnvValue(value) {
-  return value && value !== "undefined" && value !== "null" ? value : null;
-}
-
 function loadEnvFiles() {
   for (const file of envFiles) {
     try {
@@ -72,17 +68,4 @@ function run(command, args) {
 
 loadEnvFiles();
 
-if (!usableEnvValue(process.env.TEST_DATABASE_URL)) {
-  console.error(
-    [
-      "TEST_DATABASE_URL is required to run the full test suite.",
-      "Copy .env.test.example to .env.test and point TEST_DATABASE_URL at a disposable Postgres database.",
-    ].join("\n"),
-  );
-  process.exit(1);
-}
-
-process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
-
-run(process.execPath, ["packages/db/scripts/migrate.mjs"]);
 run(process.execPath, ["node_modules/vitest/vitest.mjs", "run"]);

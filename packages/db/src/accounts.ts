@@ -1,5 +1,6 @@
 import type { DbEnv } from "./env";
 import { queryRows } from "./client";
+import { NOW } from "./sql";
 import { ACCOUNT_COLUMNS } from "./constants";
 
 // Durable account record (see db/migrations/004_account_settings.sql).
@@ -33,8 +34,7 @@ type Row = {
 function mapRow(row: Row): AccountSettingsRecord {
   return {
     id: row.id,
-    // BIGINT returns as string; GitHub ids fit in Number.
-    githubUserId: Number(row.github_user_id),
+        githubUserId: Number(row.github_user_id),
     githubUsername: row.github_username,
     accountName: row.account_name,
     accountEmail: row.account_email,
@@ -55,7 +55,7 @@ export async function upsertAccountSettings(
        -- COALESCE, not EXCLUDED: this upsert runs on every sign-in, so keep an existing display name and only backfill when unset.
        account_name    = COALESCE(account_settings.account_name, EXCLUDED.account_name),
        account_email   = EXCLUDED.account_email,
-       updated_at      = now()
+       updated_at      = ${NOW}
      RETURNING ${ACCOUNT_COLUMNS}`,
     [
       input.githubUserId,
@@ -101,7 +101,7 @@ export async function updateAccountSettings(
   const rows = await queryRows<Row>(
     env,
     `UPDATE account_settings
-     SET ${assignments.join(", ")}, updated_at = now()
+     SET ${assignments.join(", ")}, updated_at = ${NOW}
      WHERE github_user_id = $1
      RETURNING ${ACCOUNT_COLUMNS}`,
     params,

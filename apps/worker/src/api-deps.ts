@@ -9,7 +9,7 @@ export function createApiRouterDeps(env: AppBindings, _ctx: ExecutionContext) {
   return createSharedApiDeps({
     sessionStore: new CloudflareSessionStore(env.APP_KV),
     kv: env.APP_KV,
-    db: { HYPERDRIVE: env.HYPERDRIVE, APP_KV: env.APP_KV, workerMode: true },
+    db: { DB: env.DB, BLOBS: env.BLOBS, APP_KV: env.APP_KV },
     identityProvider: env.IDENTITY_PROVIDER,
     enqueueReviewJob: async (input) => await env.REVIEW_QUEUE.send(input),
     terminateJobWorkflow: async (job) => {

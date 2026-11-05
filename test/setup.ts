@@ -1,5 +1,6 @@
-import { vi } from "vitest";
-import { readFileSync, existsSync } from "node:fs";
+import { afterAll, vi } from "vitest";
+import { Miniflare } from "miniflare";
+import { readdirSync, readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -24,7 +25,6 @@ const REQUIRED_TEST_ENV_KEYS = [
   "APP_URL",
   "DASHBOARD_ALLOWED_USERS",
   "BOT_USERNAME",
-  "TEST_DATABASE_URL",
 ];
 
 // Global mocks for Cloudflare environment
@@ -95,7 +95,6 @@ function assertRequiredTestEnv() {
     [
       `Missing required test environment variables: ${missing.join(", ")}.`,
       "Set these values in .env.test, .env.local, .env, .dev.vars, .env.test.example, or CI.",
-      "TEST_DATABASE_URL must point to a disposable Postgres database so the full test suite can run.",
     ].join("\n"),
   );
 }
@@ -103,7 +102,32 @@ function assertRequiredTestEnv() {
 loadTestEnvFromFiles();
 assertRequiredTestEnv();
 
-// Database-backed review flow tests can be slow on local Postgres and CI.
+// A real D1 engine for each test file, so SQL in the suite runs on what production runs. The jsdom UI
+// specs never touch the database, and Miniflare cannot start in that environment.
+if (typeof window === "undefined") {
+  const miniflare = new Miniflare({
+    modules: true,
+    script: "export default { fetch() { return new Response(); } }",
+    d1Databases: ["DB"],
+    r2Buckets: ["BLOBS"],
+    compatibilityFlags: ["nodejs_compat"],
+  });
+  const d1 = await miniflare.getD1Database("DB");
+  const migrationsDir = path.join(repoRoot, "packages/db/migrations");
+  for (const file of readdirSync(migrationsDir).sort()) {
+    // D1 runs one statement per prepare; the migrations have no semicolons inside strings or triggers.
+    const statements = readFileSync(path.join(migrationsDir, file), "utf8")
+      .replace(/^\s*--.*$/gm, "")
+      .split(/;\s*$/m)
+      .map((statement) => statement.trim())
+      .filter(Boolean);
+    await d1.batch(statements.map((statement) => d1.prepare(statement)));
+  }
+  (globalThis as any).__TEST_D1 = d1;
+  (globalThis as any).__TEST_BLOBS = await miniflare.getR2Bucket("BLOBS");
+  afterAll(() => miniflare.dispose());
+}
+
 vi.setConfig({ testTimeout: 300000 });
 
 if (typeof window !== "undefined" && !window.matchMedia) {

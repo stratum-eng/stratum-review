@@ -71,7 +71,7 @@ async function needsCheckRunCompletion(
   const rows = await queryRows<{ id: string }>(
     env,
     `SELECT id FROM jobs
-      WHERE id = $1::uuid
+      WHERE id = $1
         AND status IN ('done', 'failed', 'superseded', 'cancelled')
         AND check_run_id IS NOT NULL
         AND check_run_completed_at IS NULL`,
@@ -140,17 +140,14 @@ dbDescribe("Review flow: lifecycle and finalize", () => {
       );
 
       getDiffSpy.mockImplementationOnce(async () => {
-        const { getDb } = await import("@codraoss/db/client");
-        const sql = getDb(env);
-        await sql.query(
+        const { queryRows } = await import("@codraoss/db/client");
+        await queryRows(
+          env,
           `
-              UPDATE jobs j
+              UPDATE jobs
               SET status = 'superseded'
-              FROM repositories r
-              WHERE j.repository_id = r.id
-                AND r.owner = $1
-                AND r.repo = $2
-                AND j.pr_number = $3
+              WHERE repository_id IN (SELECT id FROM repositories WHERE owner = $1 AND repo = $2)
+                AND pr_number = $3
             `,
           ["test-owner", repo, 2],
         );

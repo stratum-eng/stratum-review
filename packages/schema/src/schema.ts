@@ -287,6 +287,8 @@ const fileReviewRecordSchema = z.object({
   diffLineCount: z.number().int().nullable(),
   diffInput: z.string().nullable(),
   rawAiOutput: z.string().nullable(),
+  // SHA-256 naming the response in R2. Files reviewed in one model call share it.
+  rawAiOutputKey: z.string().nullable().optional(),
   parsedComments: z.array(parsedReviewCommentSchema),
   inputTokens: z.number().int().nullable(),
   outputTokens: z.number().int().nullable(),

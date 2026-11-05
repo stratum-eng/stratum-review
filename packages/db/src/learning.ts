@@ -1,5 +1,6 @@
 import type { DbEnv } from "./env";
 import { queryRows } from "./client";
+import { inJson } from "./sql";
 import type { ClaimType } from "@codraoss/schema";
 
 // Reads over findings a human has already judged: report only over the LABELLED subset, always with n. The absence of a label is not a signal.
@@ -26,8 +27,8 @@ export async function getRejectedExemplars(
   return queryRows<RejectedExemplar>(
     env,
     `
-      SELECT DISTINCT ON (rc.fingerprint)
-             rc.title, rc.body, rc.claim_type, rc.context_snippet, rc.path
+      -- With a bare MAX(), SQLite takes the other columns from the row holding the maximum: the newest per fingerprint.
+      SELECT rc.title, rc.body, rc.claim_type, rc.context_snippet, rc.path, MAX(rc.id) AS newest_id
       FROM comment_feedback cf
       JOIN review_comments rc
         ON rc.fingerprint = cf.fingerprint
@@ -36,8 +37,9 @@ export async function getRejectedExemplars(
       WHERE cf.repository_id = $1
         AND cf.outcome IN ('deleted', 'marked_wrong')
         AND rc.title IS NOT NULL
-        AND ($2::text[] IS NULL OR rc.claim_type = ANY($2::text[]))
-      ORDER BY rc.fingerprint, rc.id DESC
+        AND ($2 IS NULL OR rc.claim_type ${inJson("$2")})
+      GROUP BY rc.fingerprint
+      ORDER BY rc.fingerprint
       LIMIT $3
     `,
     [
@@ -55,7 +57,7 @@ export async function getRepositoryIdForJob(
 ): Promise<number | null> {
   const [row] = await queryRows<{ repository_id: number }>(
     env,
-    `SELECT repository_id FROM jobs WHERE id = $1::uuid`,
+    `SELECT repository_id FROM jobs WHERE id = $1`,
     [jobId],
   );
   return row?.repository_id ?? null;

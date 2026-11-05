@@ -20,21 +20,18 @@
   ],
   "scripts": {
     "build": "vite build && npm run cf-typegen",
-    "build:packages": "npm run build -w @codraoss/schema && npm run build -w @codraoss/core && npm run build -w @codraoss/provider-github && npm run build -w @codraoss/db && npm run build -w @codraoss/models && npm run build -w @codraoss/api && npm run build -w @codraoss/ui && npm run build -w @codraoss/node-adapters",
-    "build:node": "npm run build:packages && vite build && npm run build -w @codraoss/node-server",
+    "build:packages": "npm run build -w @codraoss/schema && npm run build -w @codraoss/core && npm run build -w @codraoss/provider-github && npm run build -w @codraoss/db && npm run build -w @codraoss/models && npm run build -w @codraoss/api && npm run build -w @codraoss/ui",
     "build:all": "npm run build --workspaces --if-present",
     "cf-typegen": "cd apps/worker && wrangler types ./src/worker-env.d.ts",
     "deploy": "npm run build && npm run migrate && cd apps/worker && wrangler deploy",
-    "deploy:node": "npm run build:node && npm run migrate && npm run start -w @codraoss/node-server",
     "dev": "concurrently -k -n CLIENT,WORKER -c cyan,green \"npm:dev:client\" \"npm:dev:worker\"",
     "dev:client": "vite build --watch --mode development",
-    "dev:node": "npm run dev -w @codraoss/node-server",
-    "dev:worker": "cd apps/worker && wrangler dev --local --env-file ../../.dev.vars",
+    "dev:worker": "npm run migrate:local && cd apps/worker && wrangler dev --local --env-file ../../.dev.vars",
     "lint": "eslint test scripts packages apps",
     "lint:all": "npm run lint --workspaces --if-present",
     "start": "npm run dev",
     "setup:cloudflare": "node scripts/setup-cloudflare.js",
-    "migrate": "node packages/db/scripts/migrate.mjs",
+    "migrate": "cd apps/worker && wrangler d1 migrations apply codra --remote",
     "test": "node scripts/test.mjs",
     "test:all": "npm run test --workspaces --if-present",
     "test:watch": "vitest",
@@ -42,7 +39,8 @@
     "typecheck:all": "npm run typecheck --workspaces --if-present",
     "release": "npm run build:packages",
     "check:exports": "node scripts/check-package-exports.mjs",
-    "check:builds": "node scripts/check-package-builds.mjs"
+    "check:builds": "node scripts/check-package-builds.mjs",
+    "migrate:local": "cd apps/worker && wrangler d1 migrations apply codra --local"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
@@ -70,7 +68,8 @@
     "typescript-eslint": "^8.66.0",
     "vite": "^8.0.16",
     "vitest": "^4.1.11",
-    "wrangler": "^4.114.0"
+    "wrangler": "^4.114.0",
+    "miniflare": "^4.0.0"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -89,7 +88,6 @@
     "lucide-react": "^1.8.0",
     "motion": "^12.42.2",
     "nanoid": "^6.0.1",
-    "postgres": "^3.4.9",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-markdown": "^10.1.0",

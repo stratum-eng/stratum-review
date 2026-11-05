@@ -3,7 +3,7 @@ import { queryRows } from "./client";
 
 export type RepositoryRow = {
   id: number;
-  installation_id: string; // BIGINT is returned as string by node-postgres
+  installation_id: string;
   owner: string;
   repo: string;
 };
