@@ -270,6 +270,11 @@ export async function handleGitHubWebhook(c: Context<ApiEnv>) {
     return c.json({ ok: true, message: "queued", job }, 202);
   }
 
+  // Most comments on a PR are not requests for a review; don't spend a Workflow run finding that out.
+  if (normalized.eventName === "comment" && !extracted) {
+    return c.json({ ok: true, ignored: true, reason: "no_mention" }, 202);
+  }
+
   // Events without a concrete job (e.g. PR close cleanup, mention lookups) still get handled by the worker.
   await c.env.deps.platform.enqueueReviewJob({
     deliveryId,
