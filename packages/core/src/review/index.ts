@@ -65,6 +65,9 @@ import { runFinalizePhase } from "./finalize";
 
 export { NextPhaseError, failJobAndCheckRun };
 
+// The client has already retried for several seconds by the time this applies.
+const GITHUB_OUTAGE_RETRY_DELAY_SECONDS = 60;
+
 export type ReviewJobRunResult =
   | { action: "ack" }
   | { action: "retry"; delaySeconds: number }
@@ -219,6 +222,22 @@ export async function runReview(
       );
     }
 
+    if (isTransientGitHubError(error)) {
+      logger.warn(
+        `Review job hit a transient GitHub failure; scheduling delayed continuation: ${job.owner}/${job.repo} PR #${job.prNumber}`,
+        { error: messageText, phase },
+      );
+      return continueOrFailWedgedJob(
+        env,
+        job,
+        github,
+        leaseOwner,
+        phase,
+        GITHUB_OUTAGE_RETRY_DELAY_SECONDS,
+        "transient GitHub failures",
+      );
+    }
+
     if (isSubrequestBudgetError(error)) {
       const record =
         error && typeof error === "object"
@@ -256,6 +275,13 @@ export async function runReview(
     await env.jobs.releaseJobLease(job.id, leaseOwner);
     return { action: "ack" };
   }
+}
+
+// By name, not instanceof: the GitHub provider depends on core, so core can't import its error class.
+function isTransientGitHubError(error: unknown) {
+  if (!(error instanceof Error) || error.name !== "GitHubError") return false;
+  const { status } = error as Error & { status?: unknown };
+  return typeof status === "number" && (status === 429 || status >= 500);
 }
 
 async function continueOrFailWedgedJob(

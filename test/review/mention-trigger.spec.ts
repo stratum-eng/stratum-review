@@ -1,5 +1,6 @@
 import { createApiRouter } from "@codraoss/api";
 import { resolveQueuedJob } from "../../packages/core/src/review/resolve-job";
+import { failJob } from "@codraoss/db/jobs";
 import { createReviewRuntime } from "@server/adapters";
 import { createTestEnv, uniqueName } from "../helpers";
 import { signPayload } from "../mocks/fixtures";
@@ -84,6 +85,45 @@ describe("@mention review requests", () => {
       prNumber: 7,
       commitSha: "a".repeat(40),
       trigger: "mention",
+    });
+  });
+
+  describe("asking again on the same commit", () => {
+    async function mention(repo: string) {
+      queue.sent.length = 0;
+      await deliver(commentWebhook("@stratum-review review", repo));
+      const runtime = createReviewRuntime(env as any);
+      runtime.githubClients = {
+        forInstallation: () => ({
+          getPullRequest: async () => ({
+            title: "A change",
+            user: { login: "author" },
+            head: { sha: "c".repeat(40), ref: "feature" },
+            base: { sha: "d".repeat(40), ref: "main" },
+          }),
+        }),
+      } as any;
+      return resolveQueuedJob(runtime, queue.sent[0]);
+    }
+
+    it("starts a new review after the last one failed", async () => {
+      const repo = uniqueName("mention-repo");
+      const first = await mention(repo);
+      await failJob(env as any, first!.job.id, "provider outage");
+
+      const second = await mention(repo);
+
+      expect(second?.job.id).toBeDefined();
+      expect(second?.job.id).not.toBe(first!.job.id);
+    });
+
+    it("resumes a review that is still running instead of starting another", async () => {
+      const repo = uniqueName("mention-repo");
+      const first = await mention(repo);
+
+      const second = await mention(repo);
+
+      expect(second?.job.id).toBe(first!.job.id);
     });
   });
 

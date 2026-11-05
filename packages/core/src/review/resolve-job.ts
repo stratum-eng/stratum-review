@@ -132,10 +132,15 @@ export async function resolveQueuedJob(
       return { job: duplicateJob, phase: message.phase ?? "prepare" };
     }
 
-    logger.info(
-      `Duplicate terminal job found for ${resolved.owner}/${resolved.repo} PR #${resolved.prNumber}, skipping.`,
-    );
-    return null;
+    // Asking again after a failure is a real request. GitHub's redeliveries were already dropped by delivery id.
+    const isRetryRequest =
+      resolved.trigger === "mention" && duplicateJob.status === "failed";
+    if (!isRetryRequest) {
+      logger.info(
+        `Duplicate terminal job found for ${resolved.owner}/${resolved.repo} PR #${resolved.prNumber}, skipping.`,
+      );
+      return null;
+    }
   }
 
   const job = await env.jobs.insertJob({

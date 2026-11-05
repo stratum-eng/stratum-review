@@ -176,6 +176,58 @@ describe("runReview end to end on in-memory ports", () => {
     expect([...recorded.kv.keys()]).toEqual([`diff:${jobId}`]);
   });
 
+  // A review shouldn't lose its finished file reviews because GitHub hiccuped at the last step.
+  it.each([503, 429])(
+    "picks a phase back up after GitHub answers %i",
+    async (status) => {
+      const { runtime, recorded } = createInMemoryRuntime();
+      const createGitHub = runtime.createGitHub;
+      let outages = 1;
+      runtime.createGitHub = ((...args: Parameters<typeof createGitHub>) => {
+        const github = createGitHub(...args);
+        const getPullRequest = github.getPullRequest.bind(github);
+        github.getPullRequest = async (...call) => {
+          if (recorded.fileReviews.size > 0 && outages > 0) {
+            outages--;
+            throw Object.assign(new Error(`GitHub failed with ${status}`), {
+              name: "GitHubError",
+              status,
+            });
+          }
+          return getPullRequest(...call);
+        };
+        return github;
+      }) as typeof createGitHub;
+      const jobId = [...recorded.jobs.keys()][0];
+
+      await drive(runtime, jobId);
+
+      expect(outages).toBe(0);
+      expect(recorded.jobs.get(jobId)!.status).toBe("done");
+      expect(recorded.postedReviews).toHaveLength(1);
+    },
+  );
+
+  it("still fails the job when GitHub refuses the request outright", async () => {
+    const { runtime, recorded } = createInMemoryRuntime();
+    const createGitHub = runtime.createGitHub;
+    runtime.createGitHub = ((...args: Parameters<typeof createGitHub>) => {
+      const github = createGitHub(...args);
+      github.getPullRequest = async () => {
+        throw Object.assign(new Error("GitHub failed with 404"), {
+          name: "GitHubError",
+          status: 404,
+        });
+      };
+      return github;
+    }) as typeof createGitHub;
+    const jobId = [...recorded.jobs.keys()][0];
+
+    await drive(runtime, jobId);
+
+    expect(recorded.jobs.get(jobId)!.status).toBe("failed");
+  });
+
   it("gives a clean pass a thumbs-up", async () => {
     const { runtime, recorded } = createInMemoryRuntime();
 
