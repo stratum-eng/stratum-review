@@ -58,6 +58,8 @@ export function normalizeGitHubWebhook(
         },
         comment: {
           body: icPayload.comment.body,
+          authorAssociation: icPayload.comment.author_association ?? null,
+          authorType: icPayload.comment.user?.type ?? null,
         },
       },
     };

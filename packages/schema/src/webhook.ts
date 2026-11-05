@@ -20,7 +20,11 @@ export type CommentWebhookPayload = {
   installationId: string;
   repository: { owner: string; name: string };
   issue: { number: number; isChangeRequest: boolean };
-  comment: { body: string };
+  comment: {
+    body: string;
+    authorAssociation: string | null;
+    authorType: string | null;
+  };
 };
 
 export type WebhookPayload =

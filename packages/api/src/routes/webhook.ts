@@ -110,6 +110,25 @@ async function handleFeedbackEvent(
   }
 }
 
+async function isOverQuota(
+  c: Context<ApiEnv>,
+  request: { installationId: string; owner: string; repo: string },
+) {
+  const result = await c.env.deps.checkQuota?.({
+    action: "reviews.enqueue",
+    subject: {
+      installationId: request.installationId,
+      owner: request.owner,
+      repo: request.repo,
+    },
+  });
+  return Boolean(result && !result.allowed);
+}
+
+// Deliberately 202, not 429: GitHub redelivers failed webhooks, so 4xx causes retry storms.
+const quotaExceeded = (c: Context<ApiEnv>) =>
+  c.json({ ok: true, ignored: true, reason: "quota_exceeded" }, 202);
+
 export async function handleGitHubWebhook(c: Context<ApiEnv>) {
   const eventName = c.req.header("x-github-event");
   const deliveryId = c.req.header("x-github-delivery");
@@ -224,17 +243,8 @@ export async function handleGitHubWebhook(c: Context<ApiEnv>) {
       );
     }
 
-    const throttled = await c.env.deps.checkQuota?.({
-      action: "reviews.enqueue",
-      subject: {
-        installationId: extracted.installationId,
-        owner: extracted.owner,
-        repo: extracted.repo,
-      },
-    });
-    if (throttled && !throttled.allowed) {
-      // Deliberately 202, not 429: GitHub redelivers failed webhooks, so 4xx causes retry storms.
-      return c.json({ ok: true, ignored: true, reason: "quota_exceeded" }, 202);
+    if (await isOverQuota(c, extracted)) {
+      return quotaExceeded(c);
     }
 
     const job = await jobsRepo.insertJob(c.env as any, {
@@ -268,6 +278,11 @@ export async function handleGitHubWebhook(c: Context<ApiEnv>) {
     });
 
     return c.json({ ok: true, message: "queued", job }, 202);
+  }
+
+  // Mentions have no commit SHA yet, so they reach the worker below; they spend the same budget.
+  if (extracted && (await isOverQuota(c, extracted))) {
+    return quotaExceeded(c);
   }
 
   // Most comments on a PR are not requests for a review; don't spend a Workflow run finding that out.

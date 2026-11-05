@@ -73,6 +73,8 @@ export type IssueCommentWebhookPayload = {
   };
   comment: {
     body: string;
+    author_association?: string;
+    user?: { type?: string };
   };
 };
 

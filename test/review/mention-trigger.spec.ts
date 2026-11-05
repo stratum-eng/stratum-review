@@ -4,7 +4,12 @@ import { createReviewRuntime } from "@server/adapters";
 import { createTestEnv, uniqueName } from "../helpers";
 import { signPayload } from "../mocks/fixtures";
 
-function commentWebhook(body: string, repo: string, isPullRequest = true) {
+function commentWebhook(
+  body: string,
+  repo: string,
+  isPullRequest = true,
+  author: { association?: string; type?: string } = {},
+) {
   return {
     action: "created",
     installation: { id: 12345 },
@@ -13,7 +18,12 @@ function commentWebhook(body: string, repo: string, isPullRequest = true) {
       number: 7,
       ...(isPullRequest ? { pull_request: { url: "https://example.test" } } : {}),
     },
-    comment: { id: 1, body, user: { login: "someone" } },
+    comment: {
+      id: 1,
+      body,
+      author_association: author.association ?? "MEMBER",
+      user: { login: "someone", type: author.type ?? "User" },
+    },
   };
 }
 
@@ -93,5 +103,68 @@ describe("@mention review requests", () => {
       commentWebhook("@stratum-review", uniqueName("mention-repo"), false),
     );
     expect(queue.sent).toHaveLength(0);
+  });
+
+  it.each(["NONE", "CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR"])(
+    "does not start any work when a %s author tags the bot",
+    async (association) => {
+      await deliver(
+        commentWebhook("@stratum-review", uniqueName("mention-repo"), true, {
+          association,
+        }),
+      );
+      expect(queue.sent).toHaveLength(0);
+    },
+  );
+
+  it("does not start any work when a bot tags the bot", async () => {
+    await deliver(
+      commentWebhook("@stratum-review", uniqueName("mention-repo"), true, {
+        type: "Bot",
+      }),
+    );
+    expect(queue.sent).toHaveLength(0);
+  });
+
+  it.each(["@stratum-reviewer", "me@stratum-review.dev", "stratum-review"])(
+    "does not treat %s as a mention",
+    async (text) => {
+      await deliver(commentWebhook(text, uniqueName("mention-repo")));
+      expect(queue.sent).toHaveLength(0);
+    },
+  );
+
+  it("does not queue a mention the quota port refuses", async () => {
+    const quotaEnv = createTestEnv(
+      {},
+      {
+        async checkQuota() {
+          return { allowed: false, retryAfterSeconds: 60, reason: "limit" };
+        },
+      },
+    );
+    const body = JSON.stringify(
+      commentWebhook("@stratum-review", uniqueName("mention-repo")),
+    );
+    const response = await app.request(
+      "http://codra.test/webhook",
+      {
+        method: "POST",
+        headers: {
+          "x-github-event": "issue_comment",
+          "x-github-delivery": uniqueName("mention"),
+          "x-hub-signature-256": await signPayload(
+            quotaEnv.GITHUB_APP_WEBHOOK_SECRET,
+            body,
+          ),
+          "content-type": "application/json",
+        },
+        body,
+      },
+      quotaEnv,
+    );
+    const json = (await response.json()) as any;
+    expect(json.reason).toBe("quota_exceeded");
+    expect((quotaEnv.REVIEW_QUEUE as any).sent).toHaveLength(0);
   });
 });

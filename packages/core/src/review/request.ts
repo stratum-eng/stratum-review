@@ -13,6 +13,22 @@ function shouldTriggerFromChangeRequest(
   return (config.on as string[]).includes(action);
 }
 
+// Each mention spends model budget, and anyone on GitHub can comment on a public repository's pull requests.
+const MENTION_ASSOCIATIONS = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
+
+function canRequestReview(comment: CommentWebhookPayload["comment"]) {
+  return (
+    comment.authorType !== "Bot" &&
+    MENTION_ASSOCIATIONS.has(comment.authorAssociation ?? "")
+  );
+}
+
+// A plain substring would also fire on `@stratum-reviewer` or `me@stratum-review.dev`.
+function mentions(body: string, trigger: string) {
+  const escaped = trigger.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![\\w@./-])${escaped}(?![\\w-])`, "i").test(body);
+}
+
 export type ReviewRequest = {
   installationId: string;
   owner: string;
@@ -69,7 +85,10 @@ export function extractReviewRequest(input: {
       return null;
     }
 
-    if (!payload.comment.body.includes(mentionTrigger)) {
+    if (
+      !mentions(payload.comment.body, mentionTrigger) ||
+      !canRequestReview(payload.comment)
+    ) {
       return null;
     }
 
