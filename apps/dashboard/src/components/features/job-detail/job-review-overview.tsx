@@ -40,18 +40,18 @@ export const JobReviewOverview = memo(function JobReviewOverview({
       .replace(/^(✅ \*\*Approved\*\*|💬 \*\*Comments posted\*\*)\n\n/, "")
       .trim();
 
-    // Strip only the "### ... Codra Review" heading, keep the intro sentence
+    // Strip only the "### ... Stratum Review Review" heading, keep the intro sentence
     const stripHeader = (md: string) =>
       md
         .replace(
-          /^###\s*(<picture>[\s\S]*?<\/picture>|💡)\s*Codra Review\s*\n+/,
+          /^###\s*(<picture>[\s\S]*?<\/picture>|💡)\s*Stratum Review Review\s*\n+/,
           "",
         )
         .trim();
 
     if (
-      content.startsWith("### 💡 Codra Review") ||
-      content.includes("Codra Review")
+      content.startsWith("### 💡 Stratum Review Review") ||
+      content.includes("Stratum Review Review")
     ) {
       return stripHeader(content);
     }
@@ -59,7 +59,7 @@ export const JobReviewOverview = memo(function JobReviewOverview({
     const shortSha = job.commitSha.slice(0, 10);
     const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
 
-    return `Here are some automated review suggestions for this pull request.\n\n**Reviewed commit:** \`${shortSha}\`\n\n<details>\n<summary>ℹ️ About Codra</summary>\n\n<br/>\n\n[Your team has set up Codra to review pull requests in this repo](${baseUrl}/repos). Reviews are triggered when you:\n\n- **Open** a pull request for review\n- **Mark** a draft as ready\n- **Comment** "@codra-app review"\n\nIf Codra has suggestions, it will comment; otherwise it will react with 👍.\n\nCodra can also answer questions or update the PR. Try commenting "@codra-app address that feedback".\n\n</details>\n\n---\n\n${content}`;
+    return `Here are some automated review suggestions for this pull request.\n\n**Reviewed commit:** \`${shortSha}\`\n\n<details>\n<summary>ℹ️ About Stratum Review</summary>\n\n<br/>\n\n[Your team has set up Stratum Review to review pull requests in this repo](${baseUrl}/repos). Reviews are triggered when you:\n\n- **Open** a pull request for review\n- **Mark** a draft as ready\n- **Comment** "@stratum-review review"\n\nIf Stratum Review has suggestions, it will comment; otherwise it will react with 👍.\n\nCodra can also answer questions or update the PR. Try commenting "@stratum-review address that feedback".\n\n</details>\n\n---\n\n${content}`;
   }, [job.summaryMarkdown, job.commitSha]);
 
   if (!hasOverview) return null;

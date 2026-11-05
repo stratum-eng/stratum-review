@@ -27,7 +27,7 @@ export const TEST_FILE_SKIP_GLOBS = [
 ];
 export const DEFAULT_EXEC_FILE_TYPES = [".ts", ".tsx", ".js"];
 export const DEFAULT_EXEC_COMMAND = "npm run lint && npm run typecheck";
-export const DEFAULT_MENTION_TRIGGER = "@codra-app";
+export const DEFAULT_MENTION_TRIGGER = "@stratum-review";
 export const DEFAULT_LABELS = {
   p1: "review: needs-attention",
   p2: "review: approved",

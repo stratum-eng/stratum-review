@@ -4,8 +4,6 @@ import { SharedLayoutBg } from "@codraoss/ui/motion";
 import { AlignLeft, Sun, Moon, Star, X, ArrowUpRight } from "lucide-react";
 import { cn } from "@codraoss/ui/utils";
 import { useTheme } from "@codraoss/ui/theme";
-import codraDark from "@/assets/codra-fullicon-dark.svg";
-import codraLight from "@/assets/codra-fullicon-light.svg";
 import { SidebarNavItem } from "@client/components/layout/sidebar-nav-item";
 import { AccountMenu } from "@client/components/layout/account-menu";
 import { navItems as defaultNavItems } from "@client/nav";
@@ -117,14 +115,12 @@ function AppShellInner({ navItems }: { navItems: NavItem[] }) {
           <Link
             to="/dashboard"
             className="flex min-w-0 items-center rounded-md pl-4 transition-opacity duration-150 hover:opacity-75"
-            aria-label="Codra dashboard"
+            aria-label="Stratum Review dashboard"
             onClick={() => setMobileMenuOpen(false)}
           >
-            <img
-              src={theme === "dark" ? codraDark : codraLight}
-              alt="Codra"
-              className="h-7 w-auto rounded-md"
-            />
+            <span className="text-sm font-semibold text-ui-strong">
+              Stratum Review
+            </span>
           </Link>
 
           <div className="ml-auto flex items-center gap-0.5">
@@ -175,7 +171,7 @@ function AppShellInner({ navItems }: { navItems: NavItem[] }) {
         <div className="shrink-0 space-y-0.5 p-2 pt-2">
           {!isOnboardingVisible && (
             <a
-              href="https://github.com/devarshishimpi/codra"
+              href="https://github.com/stratum-eng/stratum-review"
               target="_blank"
               rel="noopener noreferrer"
               className={cn(

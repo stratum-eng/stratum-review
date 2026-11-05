@@ -138,11 +138,11 @@ export function DashboardPage() {
               description="Your pull request analysis logs will appear here"
               hints={[
                 "Once you open a PR in any of the connected repos, analysis triggers automatically",
-                "To trigger manually, comment @codra on any PR",
+                "To trigger manually, comment @stratum-review on any PR",
               ]}
               linkAction={{
-                label: "See how to interact with Codra",
-                href: "https://github.com/devarshishimpi/codra#readme",
+                label: "See how to interact with Stratum Review",
+                href: "https://github.com/stratum-eng/stratum-review#readme",
               }}
               className="rounded-none border-0"
             />

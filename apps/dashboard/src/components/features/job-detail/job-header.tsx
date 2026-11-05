@@ -11,7 +11,6 @@ import {
   Trash2,
 } from "lucide-react";
 import type { ButtonProps } from "@codraoss/ui";
-import { UpdatesEmailPrompt } from "@client/components/shared/updates-email-prompt";
 import { AuthorChip, VerdictPill } from "./job-chips";
 import { formatAbsoluteDate, formatRelativeDate } from "./job-chip-utils";
 import type { JobDetail } from "@codraoss/schema";
@@ -271,7 +270,6 @@ export function JobHeader({
         onConfirm={onDelete}
       />
 
-      <UpdatesEmailPrompt />
     </>
   );
 }

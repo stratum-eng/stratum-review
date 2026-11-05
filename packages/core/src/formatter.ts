@@ -133,8 +133,8 @@ export class FormatterService {
     const aboutOutcome =
       postedFindings === 0
         ? "Every review posts a summary here. A clean pass also gets a 👍 on the pull request itself."
-        : "If Codra has suggestions, it will comment; otherwise it will react with 👍.";
+        : "If Stratum Review has suggestions, it will comment; otherwise it will react with 👍.";
 
-    return `### Codra Review\n\n${headline}\n${noteBlock}\n**Reviewed commit:** \`${shortSha}\`\n\n<details>\n<summary>ℹ️ About Codra in GitHub</summary>\n\n<br/>\n\n[Your team has set up Codra to review pull requests in this repo](${this.baseUrl}/repos). Reviews are triggered when you:\n\n- **Open** a pull request for review\n- **Mark** a draft as ready\n\n${aboutOutcome}\n\n</details>`;
+    return `### Stratum Review Review\n\n${headline}\n${noteBlock}\n**Reviewed commit:** \`${shortSha}\`\n\n<details>\n<summary>ℹ️ About Stratum Review in GitHub</summary>\n\n<br/>\n\n[Your team has set up Stratum Review to review pull requests in this repo](${this.baseUrl}/repos). Reviews are triggered when you:\n\n- **Open** a pull request for review\n- **Mark** a draft as ready\n\n${aboutOutcome}\n\n</details>`;
   }
 }

@@ -295,14 +295,14 @@ export function ReposPage() {
           <EmptyState
             icon={<GitBranch />}
             title="No Repositories Added"
-            description="Add your repositories to get started with Codra"
+            description="Add your repositories to get started with Stratum Review"
             hints={[
               "Add repositories here to automatically enable PR analysis",
               "You can enable/disable PR analysis for each repo from its settings",
             ]}
             linkAction={{
-              label: "See how to interact with Codra",
-              href: "https://github.com/devarshishimpi/codra#readme",
+              label: "See how to interact with Stratum Review",
+              href: "https://github.com/stratum-eng/stratum-review#readme",
             }}
             className="flex-1 rounded-none border-0"
           />

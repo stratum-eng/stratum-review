@@ -52,7 +52,7 @@ function describe(job: JobDetail): Notice | null {
       tone: "warning",
       icon: TriangleAlert,
       title: "Partial review",
-      hint: "Codra posted a review, but not every file made it in.",
+      hint: "Stratum Review posted a review, but not every file made it in.",
       detail: message.replace(/^Partial review:\s*/, ""),
     };
   }
@@ -81,7 +81,7 @@ function describe(job: JobDetail): Notice | null {
       tone: "danger",
       icon: OctagonAlert,
       title: "Review failed",
-      hint: "Codra could not finish this review. Retry it from the header once the cause below is addressed.",
+      hint: "Stratum Review could not finish this review. Retry it from the header once the cause below is addressed.",
       detail: message,
     };
   }

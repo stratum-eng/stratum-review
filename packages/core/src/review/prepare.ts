@@ -36,7 +36,7 @@ export async function runPreparePhase(
     const checkRun = await github.createCheckRun(job.owner, job.repo, {
       headSha: pr.head.sha,
       title: "Review queued",
-      summary: "Codra has started reviewing this pull request.",
+      summary: "Stratum Review has started reviewing this pull request.",
     });
     checkRunId = checkRun.id;
     await env.jobs.updateJobCheckRun(job.id, checkRun.id);
@@ -62,7 +62,7 @@ export async function runPreparePhase(
     try {
       await github.updateCheckRun(job.owner, job.repo, checkRunId, {
         title: `Reviewing (0/${files.length})`,
-        summary: "Codra is analyzing changed files.",
+        summary: "Stratum Review is analyzing changed files.",
       });
     } catch (error) {
       logger.warn(

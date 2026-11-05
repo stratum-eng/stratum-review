@@ -94,7 +94,7 @@ export function AccountDetailsSection({
           </DetailRow>
         </DetailGroup>
 
-        <DetailGroup caption="Codra account">
+        <DetailGroup caption="Stratum Review account">
           {(pending || account) && (
             <DetailRow
               label="Account ID"

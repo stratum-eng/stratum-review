@@ -109,8 +109,8 @@
   "vars": {
     "APP_URL": "https://codra.jlmx.workers.dev",
     "AUTH_CALLBACK_URL": "https://codra.jlmx.workers.dev/auth/github/callback",
-    "BOT_USERNAME": "codra-stratum-eng",
-    "GITHUB_APP_SLUG": "codra-stratum-eng",
+    "BOT_USERNAME": "stratum-review",
+    "GITHUB_APP_SLUG": "stratum-review",
     "DASHBOARD_ALLOWED_USERS": "jlamoreaux",
     "ENVIRONMENT": "production",
     "TELEMETRY_DISABLED": "true",

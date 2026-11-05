@@ -139,7 +139,7 @@ export function JobFindingsList({ job }: JobFindingsListProps) {
               <FileText size={32} className="mb-3 text-ui-subtle/30" />
               <p className="text-sm font-medium text-ui-default">No findings</p>
               <p className="mt-1 text-xs text-ui-default dark:text-ui-subtle">
-                Codra didn't flag any issues in the reviewed files.
+                Stratum Review didn't flag any issues in the reviewed files.
               </p>
             </div>
           ) : (

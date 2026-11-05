@@ -27,7 +27,7 @@ function present(error: unknown): Presentation {
         ? "Resource not found"
         : error.statusText || "Request failed",
       hint: notFound
-        ? "That address isn't part of Codra. It may have been moved, or the record it pointed at was deleted."
+        ? "That address isn't part of Stratum Review. It may have been moved, or the record it pointed at was deleted."
         : "The server refused this request. Try again, or head back and pick a different route.",
       detail: typeof error.data === "string" ? error.data : undefined,
       icon: notFound ? Compass : AlertTriangle,

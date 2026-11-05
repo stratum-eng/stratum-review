@@ -2,9 +2,6 @@ import { Button, GithubMark, LinkButton } from "@codraoss/ui";
 import { Sun, Moon } from "lucide-react";
 import { useTheme } from "@codraoss/ui/theme";
 
-const TERMS_URL = "https://codra.run/terms";
-const PRIVACY_URL = "https://codra.run/privacy";
-
 const dotGrid = {
   backgroundImage:
     "radial-gradient(circle, var(--ui-line) 1px, transparent 1.5px)",
@@ -25,8 +22,6 @@ function DotGrid() {
   );
 }
 
-const legalLink =
-  "rounded-sm text-ui-default underline-offset-2 transition-colors hover:text-ui-strong hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-brand";
 
 export function LandingPage() {
   const { theme, toggleTheme } = useTheme();
@@ -93,7 +88,7 @@ export function LandingPage() {
             </div>
 
             <h1 className="mt-6 text-2xl font-semibold tracking-tight text-ui-strong sm:text-[1.75rem]">
-              Sign in to Codra
+              Sign in to Stratum Review
             </h1>
             <p className="mt-2 text-sm text-ui-subtle">
               Use your GitHub account to open the dashboard.
@@ -109,18 +104,6 @@ export function LandingPage() {
           >
             Continue with GitHub
           </LinkButton>
-
-          <p className="mt-8 text-center text-xs leading-relaxed text-ui-subtle">
-            By continuing, you agree to Codra&apos;s{" "}
-            <a href={TERMS_URL} className={legalLink}>
-              Terms of Service
-            </a>{" "}
-            and{" "}
-            <a href={PRIVACY_URL} className={legalLink}>
-              Privacy Statement
-            </a>
-            .
-          </p>
         </div>
       </main>
     </div>

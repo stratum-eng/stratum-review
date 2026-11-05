@@ -95,7 +95,7 @@ export function AccountPage() {
     <section className="page-enter flex flex-col gap-5 pb-20">
       <PageHeader
         title="Account"
-        description="Your Codra profile and account details."
+        description="Your Stratum Review profile and account details."
       />
 
       {error && (

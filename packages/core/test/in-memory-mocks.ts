@@ -175,6 +175,6 @@ export function createMockFormatter(): ReviewFormatter {
     }),
     formatInlineComment: (comment) => `**${comment.title}**\n\n${comment.body}`,
     formatReviewOverview: ({ commitSha, postedFindings }) =>
-      `### Codra Review\nReviewed ${commitSha.slice(0, 7)}: ${postedFindings} posted`,
+      `### Stratum Review Review\nReviewed ${commitSha.slice(0, 7)}: ${postedFindings} posted`,
   };
 }

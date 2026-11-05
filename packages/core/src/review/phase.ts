@@ -367,7 +367,7 @@ export async function runReviewPhase(
     try {
       await github.updateCheckRun(job.owner, job.repo, job.checkRunId, {
         title: `Reviewing (${completedCount}/${files.length})`,
-        summary: "Codra is continuing this review in the next queue chunk.",
+        summary: "Stratum Review is continuing this review in the next queue chunk.",
       });
     } catch (error) {
       logger.warn(

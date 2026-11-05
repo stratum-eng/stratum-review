@@ -121,7 +121,7 @@ export function ProfileCard({
                 </div>
               </div>
               <p className="mt-2 text-[11px] text-ui-subtle">
-                Enter to save · Esc to cancel - this name is used across Codra.
+                Enter to save · Esc to cancel - this name is used across Stratum Review.
               </p>
             </div>
           ) : (

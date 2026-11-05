@@ -40,10 +40,10 @@ describe("formatReviewOverview", () => {
   it("keeps the header, commit and about-section in both cases", () => {
     for (const posted of [0, 3]) {
       const body = overview({ postedFindings: posted });
-      expect(body.startsWith("### Codra Review")).toBe(true);
+      expect(body.startsWith("### Stratum Review Review")).toBe(true);
       // Ten characters, not the full 40 -- the PR body should stay readable.
       expect(body).toContain("`4fcf9d3760`");
-      expect(body).toContain("About Codra in GitHub");
+      expect(body).toContain("About Stratum Review in GitHub");
     }
   });
 
@@ -67,7 +67,7 @@ describe("formatReviewOverview", () => {
     const body = overview({ postedFindings: 2 });
 
     expect(body).toContain(
-      "If Codra has suggestions, it will comment; otherwise it will react with 👍.",
+      "If Stratum Review has suggestions, it will comment; otherwise it will react with 👍.",
     );
   });
 

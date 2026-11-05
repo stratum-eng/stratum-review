@@ -6,7 +6,7 @@ export function AboutSection() {
   return (
     <SectionCard
       title="About"
-      description="Version, license, and links for this Codra instance"
+      description="Version, license, and links for this Stratum Review instance"
     >
       <div className="space-y-3 p-5">
         <LayerCard className="divide-y divide-ui-line rounded-lg">
@@ -33,17 +33,17 @@ export function AboutSection() {
           <div className="grid grid-cols-1 divide-y divide-ui-line sm:grid-cols-3 sm:divide-x sm:divide-y-0">
             {[
               {
-                href: "https://github.com/devarshishimpi/codra/releases/",
-                label: "Releases",
-                sub: "Version history & notes",
+                href: "https://github.com/stratum-eng/stratum-review/commits/main",
+                label: "Source & history",
+                sub: "Source code and changes",
               },
               {
-                href: "https://codra.run",
-                label: "Homepage",
-                sub: "codra.run",
+                href: "https://github.com/devarshishimpi/codra",
+                label: "Based on Codra",
+                sub: "Modified fork of the upstream project",
               },
               {
-                href: "https://github.com/devarshishimpi/codra/issues",
+                href: "https://github.com/stratum-eng/stratum-review/issues",
                 label: "Report an issue",
                 sub: "GitHub issue tracker",
               },

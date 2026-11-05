@@ -1,3 +1,5 @@
+> **Stratum Review is a modified fork of [Codra](https://github.com/devarshishimpi/codra).** This file comes from upstream. For this fork, use [its issue tracker](https://github.com/stratum-eng/stratum-review/issues); the CLA and contact details below are the upstream project's.
+
 # Contributing to Codra
 
 Thank you for your interest in contributing to Codra! We are building a high-performance, intelligent PR review engine for the Cloudflare ecosystem, and we value contributions that align with our goals of precision and reliability.
