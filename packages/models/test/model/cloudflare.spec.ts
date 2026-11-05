@@ -209,3 +209,28 @@ describe("Cloudflare async batch submit/poll", () => {
     }
   });
 });
+
+describe("Workers AI thinking", () => {
+  async function sentArgs(model: string) {
+    const run = vi.fn(async () => ({
+      choices: [{ message: { content: "{}" } }],
+    }));
+    await reviewWithCloudflare({ run }, model, {
+      systemPrompt: "s",
+      userPrompt: "u",
+    });
+    return (run.mock.calls[0] as unknown[])[1] as Record<string, unknown>;
+  }
+
+  // Left on, GLM spends the output budget and the time limit reasoning: a diff that took 13s with
+  // thinking off took 58s and hit a 3000-token cap without returning an answer.
+  it("turns thinking off for a model whose profile says so", async () => {
+    const args = await sentArgs("@cf/zai-org/glm-4.7-flash");
+    expect(args.chat_template_kwargs).toEqual({ enable_thinking: false });
+  });
+
+  it("leaves thinking alone for a model without that profile", async () => {
+    const args = await sentArgs("@cf/moonshotai/kimi-k2.6");
+    expect(args.chat_template_kwargs).toBeUndefined();
+  });
+});

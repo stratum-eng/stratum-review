@@ -13,6 +13,7 @@ import {
   OUTPUT_TOKENS_FLOOR,
   resolveOutputTokenCeiling,
 } from "../limits";
+import { profileSampling } from "./profile-sampling";
 
 export interface CloudflareAiBinding {
   run(model: string, args: unknown, options?: unknown): Promise<unknown>;
@@ -144,9 +145,13 @@ function extractCloudflareUsage(result: unknown) {
 }
 
 // Grammar comes from CALLER.
-function buildCloudflareInferenceRequest(input: ModelInput) {
+function buildCloudflareInferenceRequest(model: string, input: ModelInput) {
   const prompts = jsonOnlyPrompts(input);
   return {
+    // Left on, a reasoning model can spend the whole output budget and time limit before it answers.
+    ...(profileSampling(model)?.thinkingBudget === "off"
+      ? { chat_template_kwargs: { enable_thinking: false } }
+      : {}),
     messages: [
       { role: "system", content: prompts.system },
       { role: "user", content: prompts.user },
@@ -211,7 +216,7 @@ export async function submitCloudflareBatch(
   logger.info(`Submitting async batch request to Cloudflare model: ${model}`);
   const result = await aiBinding.run(
     model as any,
-    { requests: [buildCloudflareInferenceRequest(input)] } as any,
+    { requests: [buildCloudflareInferenceRequest(model, input)] } as any,
     { queueRequest: true } as any,
   );
 
@@ -284,7 +289,7 @@ export async function reviewWithCloudflare(
     const startTime = Date.now();
     const runPromise = aiBinding.run(
       model,
-      buildCloudflareInferenceRequest(input),
+      buildCloudflareInferenceRequest(model, input),
       { signal: controller.signal },
     );
     // The aborted run still settles as a rejection; a no-op handler stops it surfacing as unhandled.
