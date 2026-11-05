@@ -132,9 +132,12 @@ export async function resolveQueuedJob(
       return { job: duplicateJob, phase: message.phase ?? "prepare" };
     }
 
-    // Asking again after a failure is a real request. GitHub's redeliveries were already dropped by delivery id.
+    // Asking again after a failure is a real request. A retry of the run that failed is not, and
+    // GitHub's redeliveries were already dropped by delivery id.
     const isRetryRequest =
-      resolved.trigger === "mention" && duplicateJob.status === "failed";
+      resolved.trigger === "mention" &&
+      duplicateJob.status === "failed" &&
+      duplicateJob.workflowInstanceId !== message.workflowInstanceId;
     if (!isRetryRequest) {
       logger.info(
         `Duplicate terminal job found for ${resolved.owner}/${resolved.repo} PR #${resolved.prNumber}, skipping.`,

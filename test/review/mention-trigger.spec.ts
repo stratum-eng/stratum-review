@@ -1,6 +1,6 @@
 import { createApiRouter } from "@codraoss/api";
 import { resolveQueuedJob } from "../../packages/core/src/review/resolve-job";
-import { failJob } from "@codraoss/db/jobs";
+import { failJob, setJobWorkflowInstance } from "@codraoss/db/jobs";
 import { createReviewRuntime } from "@server/adapters";
 import { createTestEnv, uniqueName } from "../helpers";
 import { signPayload } from "../mocks/fixtures";
@@ -92,6 +92,10 @@ describe("@mention review requests", () => {
     async function mention(repo: string) {
       queue.sent.length = 0;
       await deliver(commentWebhook("@stratum-review review", repo));
+      return resolve();
+    }
+
+    function resolve(extra: { workflowInstanceId?: string } = {}) {
       const runtime = createReviewRuntime(env as any);
       runtime.githubClients = {
         forInstallation: () => ({
@@ -103,7 +107,7 @@ describe("@mention review requests", () => {
           }),
         }),
       } as any;
-      return resolveQueuedJob(runtime, queue.sent[0]);
+      return resolveQueuedJob(runtime, { ...queue.sent[0], ...extra });
     }
 
     it("starts a new review after the last one failed", async () => {
@@ -115,6 +119,17 @@ describe("@mention review requests", () => {
 
       expect(second?.job.id).toBeDefined();
       expect(second?.job.id).not.toBe(first!.job.id);
+    });
+
+    it("does not replace a failed review when its own run is retried", async () => {
+      const repo = uniqueName("mention-repo");
+      const first = await mention(repo);
+      await setJobWorkflowInstance(env as any, first!.job.id, "run-1");
+      await failJob(env as any, first!.job.id, "provider outage");
+
+      const retried = await resolve({ workflowInstanceId: "run-1" });
+
+      expect(retried).toBeNull();
     });
 
     it("resumes a review that is still running instead of starting another", async () => {
